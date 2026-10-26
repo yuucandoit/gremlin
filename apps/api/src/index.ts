@@ -4,6 +4,7 @@ import { runAgentLoop } from './agent/loop';
 import { PERSONAS } from './agent/personas';
 import { runMigrations } from './db/migrate';
 import { runQueue } from './lib/queue';
+import { llmClient } from './llm/client';
 import { eventsRoutes } from './routes/events';
 import { reportRoutes } from './routes/report';
 import { runsRoutes } from './routes/runs';
@@ -31,6 +32,10 @@ const app = new Elysia()
     status: 'ok',
     timestamp: new Date().toISOString(),
     service: 'gremlin-api',
+    ai: {
+      enabled: llmClient.hasLLMConfigured(),
+      model: llmClient.getModelName(),
+    },
   }))
   .get('/personas', () => Object.values(PERSONAS))
   .use(runsRoutes)

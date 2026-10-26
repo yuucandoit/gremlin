@@ -22,6 +22,27 @@ export interface ObservationData {
   recentSignals: any[];
 }
 
+function cleanJson(raw: string): string {
+  let cleaned = raw.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+  const firstBrace = cleaned.indexOf('{');
+  const firstBracket = cleaned.indexOf('[');
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    const endIdx = cleaned.lastIndexOf('}');
+    if (endIdx > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, endIdx + 1);
+    }
+  } else if (firstBracket !== -1) {
+    const endIdx = cleaned.lastIndexOf(']');
+    if (endIdx > firstBracket) {
+      cleaned = cleaned.slice(firstBracket, endIdx + 1);
+    }
+  }
+  return cleaned;
+}
+
 export class LLMClient {
   private apiKey: string | undefined;
   private baseUrl: string;
@@ -49,16 +70,30 @@ export class LLMClient {
     }
   }
 
+  hasLLMConfigured(): boolean {
+    return !!this.apiKey;
+  }
+
+  getModelName(): string {
+    return this.model;
+  }
+
   async decideAction(
     obs: ObservationData,
     personaSystemPrompt: string
   ): Promise<DecisionResult> {
     if (this.apiKey) {
       try {
-        return await this.callLLMForDecision(obs, personaSystemPrompt);
+        console.log(`[Gremlin AI] 🧠 Querying ${this.model} for step ${obs.stepNumber}/${obs.maxSteps}...`);
+        const result = await this.callLLMForDecision(obs, personaSystemPrompt);
+        console.log(`[Gremlin AI] 💡 Model Thought: "${result.thought}"`);
+        console.log(`[Gremlin AI] 🎯 Decided Action: ${result.action.type} ${'selector' in result.action ? `-> ${result.action.selector}` : ''}`);
+        return result;
       } catch (err) {
-        console.warn('[LLMClient] API call failed, using heuristic decision engine:', err);
+        console.warn(`[Gremlin AI] ⚠️ API call to ${this.model} failed, falling back to autonomous heuristic:`, err);
       }
+    } else {
+      console.log(`[Gremlin AI] ⚡ Autonomous heuristic engine active (no LLM_API_KEY found)`);
     }
 
     return this.heuristicDecision(obs);
@@ -101,17 +136,17 @@ Decide the best next action:`;
           { role: 'user', content: userMessage },
         ],
         temperature: 0.7,
-        response_format: { type: 'json_object' },
       }),
     });
 
     if (!res.ok) {
-      throw new Error(`LLM HTTP Error: ${res.status} ${res.statusText}`);
+      const errText = await res.text().catch(() => '');
+      throw new Error(`LLM HTTP Error: ${res.status} ${res.statusText} - ${errText}`);
     }
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '{}';
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(cleanJson(content));
 
     return {
       thought: parsed.thought || 'Executing planned exploration step.',
@@ -122,7 +157,6 @@ Decide the best next action:`;
   private heuristicDecision(obs: ObservationData): DecisionResult {
     const { interactiveElements, personaId, stepNumber, maxSteps, recentActions } = obs;
 
-    // Check if we should finish
     if (stepNumber >= maxSteps || interactiveElements.length === 0) {
       return {
         thought: 'Completed the exploration run or no further interactive elements detected.',
@@ -135,7 +169,7 @@ Decide the best next action:`;
       recentActions.filter((a) => a.type === 'click' || a.type === 'double_click').map((a) => a.selector)
     );
 
-    // 1. If there are text/number/email inputs that haven't been filled:
+    // 1. Inputs
     const emptyInputs = interactiveElements.filter(
       (el) =>
         (el.tag === 'input' || el.tag === 'textarea') &&
@@ -150,17 +184,14 @@ Decide the best next action:`;
       let thought = `Testing input field ${input.selector}`;
 
       if (persona.includes('gremlin')) {
-        // Chaos gremlin injects emojis or crazy inputs
         const chaosInputs = ['👾 Gremlin Cart 💥', '🛒🔥', 'NaN', '999999999', '"><script>alert(1)</script>'];
         value = chaosInputs[stepNumber % chaosInputs.length];
         thought = `Gremlin injecting chaos payload into ${input.selector} to verify sanitization and encoding`;
       } else if (persona.includes('skeptic')) {
-        // Skeptic inputs negative or boundary values
         const skepticInputs = ['', '-1', 'DISCOUNT99', '0', 'INVALID_PROMO'];
         value = skepticInputs[stepNumber % skepticInputs.length];
         thought = `Skeptic testing boundary and edge case value on ${input.selector}`;
       } else {
-        // Happy path shopper
         if (input.name?.includes('email') || input.type === 'email') value = 'customer@example.com';
         else if (input.name?.includes('name')) value = 'Budi Santoso';
         else if (input.name?.includes('address')) value = 'Jl. MH Thamrin No. 10';
@@ -185,7 +216,6 @@ Decide the best next action:`;
     const buttons = interactiveElements.filter((el) => el.tag === 'button' || el.role === 'button');
     const links = interactiveElements.filter((el) => el.tag === 'a');
 
-    // Filter unclicked buttons
     const unclickedButtons = buttons.filter((b) => !clickedSelectors.has(b.selector));
     const targetButton = unclickedButtons[0] || buttons[0];
 
@@ -197,7 +227,6 @@ Decide the best next action:`;
         targetButton.text.toLowerCase().includes('submit') ||
         targetButton.selector.includes('checkout');
 
-      // Gremlin or Speed Demon tries double clicks on checkout/submit buttons!
       if ((persona.includes('gremlin') || persona.includes('speed')) && isCheckoutOrSubmit) {
         return {
           thought: `Testing race condition / idempotency by rapidly double clicking '${targetButton.text}' (${targetButton.selector})`,
@@ -219,7 +248,6 @@ Decide the best next action:`;
       };
     }
 
-    // 3. Fallback to links
     if (links.length > 0) {
       const link = links[0];
       return {
@@ -232,7 +260,6 @@ Decide the best next action:`;
       };
     }
 
-    // 4. Scroll or wait
     return {
       thought: 'Scrolling down to reveal additional viewport content.',
       action: {
@@ -250,6 +277,7 @@ Decide the best next action:`;
   ): Promise<any[]> {
     if (this.apiKey) {
       try {
+        console.log(`[Gremlin AI] 🔍 Synthesizing findings with ${this.model}...`);
         const res = await fetch(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -272,10 +300,12 @@ Decide the best next action:`;
         if (res.ok) {
           const data = await res.json();
           const content = data.choices?.[0]?.message?.content || '[]';
-          return JSON.parse(content);
+          const parsed = JSON.parse(cleanJson(content));
+          console.log(`[Gremlin AI] ✅ Successfully synthesized ${parsed.length} findings via ${this.model}`);
+          return parsed;
         }
       } catch (err) {
-        console.warn('[LLMClient] Report synthesis failed, falling back to deterministic builder:', err);
+        console.warn(`[Gremlin AI] ⚠️ Report synthesis via ${this.model} failed, falling back to deterministic builder:`, err);
       }
     }
 

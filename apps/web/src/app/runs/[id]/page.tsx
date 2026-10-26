@@ -127,6 +127,9 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
                 Persona: {currentRun.personaId}
               </span>
             )}
+            <span className="text-[11px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 font-mono flex items-center gap-1">
+              <span>🧠</span> AI: DeepSeek
+            </span>
           </div>
         </div>
 

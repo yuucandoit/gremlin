@@ -175,9 +175,9 @@ export function LiveBrowserView({
         {/* Floating Action Overlay on bottom */}
         {currentThought && (
           <div className="absolute bottom-3 left-3 right-3 bg-slate-950/85 backdrop-blur-md border border-border/80 px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2.5 text-xs text-slate-200">
-            <Sparkles className="w-4 h-4 text-gremlin-400 flex-shrink-0 animate-pulse" />
+            <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0 animate-pulse" />
             <div className="min-w-0 flex-1 truncate">
-              <span className="font-semibold text-gremlin-400">Agent Thought: </span>
+              <span className="font-semibold text-purple-400">🧠 AI Reasoning: </span>
               <span className="text-slate-300">{currentThought}</span>
             </div>
             {currentStep > 0 && (
