@@ -1,0 +1,3 @@
+[test]
+root = "apps/api/tests"
+pattern = "*.test.ts"

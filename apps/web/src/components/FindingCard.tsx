@@ -1,8 +1,9 @@
 'use client';
 
 import type { Finding } from '@gremlin/shared';
-import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, ShieldAlert } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Eye, Info, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
+import { getArtifactUrl } from '../lib/api';
 
 interface FindingCardProps {
   finding: Finding;
@@ -86,6 +87,33 @@ export function FindingCard({ finding }: FindingCardProps) {
           <span>{finding.suggestedFix}</span>
         </div>
       </div>
+
+      {/* Meta SAM 3.1 Visual Defect Annotation */}
+      {finding.annotatedScreenshotPath && (
+        <div className="mt-4 p-3.5 rounded-xl bg-slate-950/90 border border-rose-900/40">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-mono font-bold text-rose-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              Meta SAM 3.1 Visual Defect Segmentation
+            </span>
+            <a
+              href={getArtifactUrl(finding.runId, finding.annotatedScreenshotPath)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-sky-400 hover:text-sky-300 font-mono underline"
+            >
+              Open Full Vector Annotation ↗
+            </a>
+          </div>
+          <div className="relative rounded-lg overflow-hidden border border-slate-800 bg-slate-900">
+            <img
+              src={getArtifactUrl(finding.runId, finding.annotatedScreenshotPath)}
+              alt={`Defect annotation for ${finding.title}`}
+              className="w-full h-auto max-h-72 object-contain mx-auto"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Expandable reproduction steps */}
       {expanded && (

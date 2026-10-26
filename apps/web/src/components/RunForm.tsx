@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { createRun } from '../lib/api';
-import { ArrowRight, Bot, Flame, Play, Settings2, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, Flame, Monitor, Play, Settings2, Smartphone, Sparkles } from 'lucide-react';
 
 const PRESET_PERSONAS = [
   {
@@ -46,6 +46,7 @@ export function RunForm() {
   const [personaId, setPersonaId] = useState('gremlin');
   const [maxSteps, setMaxSteps] = useState(15);
   const [chaosMode, setChaosMode] = useState(true);
+  const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +61,7 @@ export function RunForm() {
         personaId,
         maxSteps,
         chaosMode,
+        viewport,
       });
 
       router.push(`/runs/${run.id}`);
@@ -137,6 +139,54 @@ export function RunForm() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Device Viewport Emulation */}
+      <div className="space-y-3">
+        <label className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+          <Monitor className="w-4 h-4 text-gremlin-400" /> Device Viewport & Emulation
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div
+            onClick={() => setViewport('desktop')}
+            className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
+              viewport === 'desktop'
+                ? 'bg-slate-800/90 border-gremlin-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-1 ring-gremlin-400'
+                : 'bg-card border-border hover:bg-slate-900/60'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🖥️</span>
+              <div>
+                <div className="font-semibold text-sm text-slate-100">Desktop Viewport</div>
+                <div className="text-xs text-slate-400 font-mono">1280 × 800 • Full Web</div>
+              </div>
+            </div>
+            {viewport === 'desktop' && (
+              <span className="w-2.5 h-2.5 rounded-full bg-gremlin-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+            )}
+          </div>
+
+          <div
+            onClick={() => setViewport('mobile')}
+            className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
+              viewport === 'mobile'
+                ? 'bg-slate-800/90 border-gremlin-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-1 ring-gremlin-400'
+                : 'bg-card border-border hover:bg-slate-900/60'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📱</span>
+              <div>
+                <div className="font-semibold text-sm text-slate-100">Mobile Viewport</div>
+                <div className="text-xs text-slate-400 font-mono">390 × 844 • Touch Emulation</div>
+              </div>
+            </div>
+            {viewport === 'mobile' && (
+              <span className="w-2.5 h-2.5 rounded-full bg-gremlin-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+            )}
+          </div>
         </div>
       </div>
 

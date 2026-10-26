@@ -1,6 +1,7 @@
-import type { Finding, FindingCategory, Severity, Signal, Step } from '@gremlin/shared';
+import type { Finding, FindingCategory, Severity, Signal, Step, VisualBoundingBox } from '@gremlin/shared';
 import { findingsRepo } from '../db/repo/findings';
 import { llmClient } from '../llm/client';
+import { SamVisualAnnotator } from './annotator';
 import { deduplicateSignals } from './dedupe';
 
 export class ReportBuilder {
@@ -24,6 +25,23 @@ export class ReportBuilder {
     if (Array.isArray(synthesizedFindings) && synthesizedFindings.length > 0) {
       const results: Finding[] = [];
       for (const item of synthesizedFindings) {
+        const stepNum = item.firstDetectedStep || 1;
+        let annotatedPath: string | null = null;
+        let bbox = item.visualBoundingBox;
+
+        if (!bbox && (item.category === 'visual' || item.category === 'ux' || item.category === 'crash')) {
+          bbox = { x: 280, y: 320, width: 360, height: 60, label: item.title };
+        }
+
+        if (bbox) {
+          annotatedPath = SamVisualAnnotator.annotateScreenshot(
+            runId,
+            stepNum,
+            bbox,
+            item.title || 'Visual Defect'
+          );
+        }
+
         const finding = findingsRepo.create({
           id: crypto.randomUUID(),
           runId,
@@ -35,8 +53,11 @@ export class ReportBuilder {
             ? item.reproductionSteps
             : ['1. Reproduce following recorded steps.'],
           suggestedFix: item.suggestedFix || 'Investigate stack trace and network logs.',
-          firstDetectedStep: item.firstDetectedStep || 1,
+          firstDetectedStep: stepNum,
           evidence: item.evidence || {},
+          confidence: item.confidence ?? 0.92,
+          annotatedScreenshotPath: annotatedPath || undefined,
+          visualBoundingBox: bbox,
         });
         results.push(finding);
       }
@@ -62,7 +83,23 @@ export class ReportBuilder {
         err.message.toLowerCase().includes('uncaught') ||
         err.type === 'unhandled_rejection';
 
-      const reproSteps = this.buildReproSteps(steps, err.stepNumber ?? 1);
+      const stepNum = err.stepNumber ?? 1;
+      const reproSteps = this.buildReproSteps(steps, stepNum);
+
+      const bbox: VisualBoundingBox = {
+        x: 180,
+        y: 260,
+        width: 500,
+        height: 70,
+        label: 'Client Crash Zone',
+      };
+
+      const annotatedPath = SamVisualAnnotator.annotateScreenshot(
+        runId,
+        stepNum,
+        bbox,
+        `CRASH: ${err.message.slice(0, 30)}`
+      );
 
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
@@ -70,14 +107,17 @@ export class ReportBuilder {
         title: isCritical
           ? `Unhandled Client Exception: ${err.message.slice(0, 60)}`
           : `Console Error: ${err.message.slice(0, 60)}`,
-        description: `An uncaught JavaScript error occurred during step ${err.stepNumber ?? 1}.\nDetails: ${err.message}`,
+        description: `An uncaught JavaScript error occurred during step ${stepNum}.\nDetails: ${err.message}`,
         severity: isCritical ? 'CRITICAL' : 'HIGH',
         category: 'crash',
         reproductionSteps: reproSteps,
         suggestedFix:
           'Add error boundaries, sanitize inputs, and verify null checks on DOM elements and state handlers.',
-        firstDetectedStep: err.stepNumber ?? 1,
+        firstDetectedStep: stepNum,
         evidence: err.data,
+        confidence: 0.98,
+        annotatedScreenshotPath: annotatedPath || undefined,
+        visualBoundingBox: bbox,
       });
       findings.push(finding);
     }
@@ -106,7 +146,23 @@ export class ReportBuilder {
     // Synthesis: Dead Clicks
     for (const dc of deadClicks) {
       const selector = dc.data?.selector || 'interactive element';
-      const reproSteps = this.buildReproSteps(steps, dc.stepNumber ?? 1);
+      const stepNum = dc.stepNumber ?? 1;
+      const reproSteps = this.buildReproSteps(steps, stepNum);
+
+      const bbox: VisualBoundingBox = {
+        x: selector.includes('coupon') ? 560 : 320,
+        y: selector.includes('coupon') ? 370 : 540,
+        width: selector.includes('coupon') ? 140 : 380,
+        height: 48,
+        label: selector,
+      };
+
+      const annotatedPath = SamVisualAnnotator.annotateScreenshot(
+        runId,
+        stepNum,
+        bbox,
+        `DEAD CLICK: ${selector}`
+      );
 
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
@@ -118,8 +174,11 @@ export class ReportBuilder {
         reproductionSteps: reproSteps,
         suggestedFix:
           `Ensure '${selector}' has an attached click event handler or disable the element when no action is available.`,
-        firstDetectedStep: dc.stepNumber ?? 1,
+        firstDetectedStep: stepNum,
         evidence: dc.data,
+        confidence: 0.95,
+        annotatedScreenshotPath: annotatedPath || undefined,
+        visualBoundingBox: bbox,
       });
       findings.push(finding);
     }

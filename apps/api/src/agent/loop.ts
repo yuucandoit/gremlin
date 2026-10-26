@@ -12,6 +12,7 @@ import { exportRegressionSpec } from '../report/exportSpec';
 import { executeAction } from './act';
 import { injectVirtualCursor } from './cursor';
 import { decideNextAction } from './decide';
+import { conductReconnaissance } from './recon';
 import { ConsoleDetector } from './detectors/console';
 import { DeadClickDetector } from './detectors/deadClick';
 import { NetworkDetector } from './detectors/network';
@@ -48,9 +49,17 @@ export async function runAgentLoop(runId: string): Promise<void> {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
+    const isMobile = run.viewport === 'mobile';
+    const viewportWidth = isMobile ? 390 : 1280;
+    const viewportHeight = isMobile ? 844 : 800;
+
     context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) GremlinAutonomousAgent/1.0',
+      viewport: { width: viewportWidth, height: viewportHeight },
+      isMobile,
+      hasTouch: isMobile,
+      userAgent: isMobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 GremlinMobileAgent/1.0'
+        : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) GremlinAutonomousAgent/1.0',
     });
 
     // Start tracing
@@ -67,8 +76,8 @@ export async function runAgentLoop(runId: string): Promise<void> {
       await cdp.send('Page.startScreencast', {
         format: 'jpeg',
         quality: 75,
-        maxWidth: 1280,
-        maxHeight: 800,
+        maxWidth: viewportWidth,
+        maxHeight: viewportHeight,
         everyNthFrame: 1,
       });
 
@@ -94,6 +103,20 @@ export async function runAgentLoop(runId: string): Promise<void> {
       await page.goto(run.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       recentUrls.push(page.url());
       await injectVirtualCursor(page);
+
+      // Autonomous Reconnaissance & Strategic Test Plan
+      try {
+        const testPlan = await conductReconnaissance(page, run.url, persona.name);
+        runsRepo.updateTestPlan(runId, testPlan);
+        eventBus.emitRunEvent({
+          type: 'test_plan:ready',
+          runId,
+          timestamp: new Date().toISOString(),
+          data: { testPlan },
+        });
+      } catch (reconErr) {
+        console.warn('[AgentLoop] Reconnaissance failed:', reconErr);
+      }
     } catch (err: any) {
       const navSignal = signalsRepo.create({
         id: crypto.randomUUID(),
@@ -171,6 +194,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
         personaId: run.personaId,
         stepNumber,
         maxSteps,
+        screenshotPath: obs.screenshotPath,
         interactiveElements: obs.interactiveElements,
         recentActions,
         recentSignals: collectedSignals,

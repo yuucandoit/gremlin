@@ -1,7 +1,7 @@
 import cors from '@elysiajs/cors';
 import { Elysia, t } from 'elysia';
 
-const PORT = Number(process.env.PORT) || 3002;
+const PORT = Number(process.env.DEMO_PORT) || 3002;
 
 let orderCount = 0;
 const processedOrders = new Map<string, number>();
@@ -14,6 +14,44 @@ const app = new Elysia()
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
   })
+
+  // Auth Page UI
+  .get('/login', () => {
+    return new Response(LOGIN_HTML, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  })
+
+  // BUG 6: Security / Auth Info Leak - Email Enumeration Vulnerability
+  .post(
+    '/api/login',
+    ({ body, set }) => {
+      const { email, password } = body as { email?: string; password?: string };
+
+      if (!email || !password) {
+        set.status = 400;
+        return { error: 'Email and password are required' };
+      }
+
+      if (email.toLowerCase() === 'admin@glitchmart.com') {
+        if (password === 'SuperSecret123!') {
+          return { success: true, message: 'Authentication successful', token: 'bearer-glitch-token-xyz' };
+        }
+        // Leaks account existence!
+        set.status = 401;
+        return { error: 'User admin@glitchmart.com exists, but password invalid' };
+      }
+
+      set.status = 401;
+      return { error: 'No account registered with this email address' };
+    },
+    {
+      body: t.Object({
+        email: t.String(),
+        password: t.String(),
+      }),
+    }
+  )
 
   // Products API
   .get('/api/products', () => {
@@ -180,14 +218,38 @@ const STORE_HTML = `<!DOCTYPE html>
     .alert-success { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; }
     .alert-danger { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; }
     .alert-warning { background: #78350f; color: #fde68a; border: 1px solid #d97706; }
+
+    /* VISUAL DEFECT: Mobile Banner Obstructing Checkout Button */
+    .mobile-overlay-promo {
+      display: none;
+    }
+    @media (max-width: 600px) {
+      .mobile-overlay-promo {
+        display: block;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(180deg, rgba(30, 27, 75, 0.96) 0%, rgba(15, 23, 42, 0.98) 100%);
+        border-top: 2px solid #ef4444;
+        padding: 18px 20px;
+        z-index: 45;
+        text-align: center;
+        box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(8px);
+      }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">🛒 GlitchMart</div>
-    <button id="btn-view-cart" class="cart-pill">
-      <span>Cart (<span id="cart-count">1</span>)</span>
-    </button>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <a href="/login" id="nav-login" style="color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: 6px; border: 1px solid #334155;">Sign In</a>
+      <button id="btn-view-cart" class="cart-pill">
+        <span>Cart (<span id="cart-count">1</span>)</span>
+      </button>
+    </div>
   </header>
 
   <div class="container">
@@ -235,6 +297,10 @@ const STORE_HTML = `<!DOCTYPE html>
           <div class="card-img">🎧</div>
           <div class="card-title">Noise-Canceling Headset</div>
           <div class="card-price">$85</div>
+          <!-- VISUAL BUG 3: Clipped / cut-off text overflow -->
+          <div id="prod-3-desc" style="overflow: hidden; height: 18px; line-height: 28px; color: #94a3b8; font-size: 12px; margin-bottom: 12px;">
+            Studio-grade noise cancelling wireless headset featuring ultra-wide acoustic chamber and spatial 3D audio calibration.
+          </div>
         </div>
         <div>
           <div class="qty-controls">
@@ -279,6 +345,11 @@ const STORE_HTML = `<!DOCTYPE html>
           <input type="text" id="input-address" name="address" class="form-input" placeholder="Jl. Sudirman No. 42" required />
         </div>
 
+        <!-- VISUAL BUG 2: Low contrast text (WCAG 1.4.3 violation - Ratio 1.5:1) -->
+        <p id="terms-disclaimer" style="color: #334155; background: #1e293b; font-size: 11px; margin-top: 12px; padding: 6px 8px; border-radius: 4px; border: 1px solid #1e293b;">
+          * Non-refundable after order placed. By placing this order you waive all chargeback rights under section 4b.
+        </p>
+
         <!-- BUG 1: Double click checkout triggers duplicate charges -->
         <button type="button" id="btn-checkout-submit" class="btn-checkout" onclick="submitCheckout()">
           Place Order ($<span id="checkout-total">120</span>)
@@ -286,6 +357,19 @@ const STORE_HTML = `<!DOCTYPE html>
       </form>
 
       <div id="alert-box" class="alert"></div>
+    </div>
+  </div>
+
+  <!-- VISUAL BUG 1: Mobile overlay obstructing checkout button on small screens -->
+  <div id="mobile-promo" class="mobile-overlay-promo">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="color: #f87171; font-weight: 700; font-size: 13px;">🚨 FLASH SALE 50% ACTIVE</div>
+        <div style="color: #94a3b8; font-size: 11px;">Tap voucher before checkout ends!</div>
+      </div>
+      <button style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer;">
+        CLAIM
+      </button>
     </div>
   </div>
 
@@ -391,6 +475,89 @@ const STORE_HTML = `<!DOCTYPE html>
       });
 
       setTimeout(() => { checkoutClicks = 0; }, 1000);
+    }
+  </script>
+</body>
+</html>`;
+
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In - GlitchMart</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; width: 100%; max-width: 400px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    .title { font-size: 22px; font-weight: 800; color: #38bdf8; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .subtitle { color: #94a3b8; font-size: 13px; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px; }
+    .form-input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px 14px; color: white; font-size: 14px; outline: none; transition: border-color 0.2s; }
+    .form-input:focus { border-color: #38bdf8; }
+    .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 12px; }
+    .btn-submit:hover { background: #1d4ed8; }
+    .alert { padding: 12px; border-radius: 8px; font-size: 13px; margin-top: 16px; display: none; }
+    .alert-danger { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; }
+    .alert-success { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; }
+    .back-link { display: block; text-align: center; margin-top: 20px; color: #64748b; font-size: 12px; text-decoration: none; }
+    .back-link:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">🛒 GlitchMart</div>
+    <p class="subtitle">Enter credentials to access customer account</p>
+
+    <form id="login-form" onsubmit="event.preventDefault(); handleLogin();">
+      <div class="form-group">
+        <label for="input-login-email">Email Address (try admin@glitchmart.com)</label>
+        <input type="email" id="input-login-email" class="form-input" placeholder="you@domain.com" required />
+      </div>
+
+      <div class="form-group">
+        <label for="input-login-password">Password</label>
+        <input type="password" id="input-login-password" class="form-input" placeholder="••••••••" required />
+      </div>
+
+      <button type="submit" id="btn-login-submit" class="btn-submit">Sign In</button>
+    </form>
+
+    <div id="login-alert" class="alert"></div>
+
+    <a href="/" class="back-link">← Return to Storefront</a>
+  </div>
+
+  <script>
+    async function handleLogin() {
+      const email = document.getElementById('input-login-email').value;
+      const password = document.getElementById('input-login-password').value;
+      const alertBox = document.getElementById('login-alert');
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          alertBox.className = 'alert alert-success';
+          alertBox.style.display = 'block';
+          alertBox.innerText = data.message || 'Login successful!';
+        } else {
+          // Reveals error containing account existence leak!
+          alertBox.className = 'alert alert-danger';
+          alertBox.style.display = 'block';
+          alertBox.innerText = data.error || 'Authentication failed';
+        }
+      } catch (err) {
+        alertBox.className = 'alert alert-danger';
+        alertBox.style.display = 'block';
+        alertBox.innerText = 'Network error during login request';
+      }
     }
   </script>
 </body>

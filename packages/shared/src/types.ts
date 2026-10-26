@@ -9,9 +9,10 @@ export type SignalType =
   | 'dead_click'
   | 'stuck_loop'
   | 'unhandled_rejection'
-  | 'http_5xx';
+  | 'http_5xx'
+  | 'visual_defect';
 
-export type FindingCategory = 'crash' | 'functional' | 'network' | 'ux' | 'accessibility';
+export type FindingCategory = 'crash' | 'functional' | 'network' | 'ux' | 'accessibility' | 'visual';
 
 export interface Persona {
   id: string;
@@ -24,15 +25,32 @@ export interface Persona {
   avatar?: string;
 }
 
+export interface TestPlan {
+  overview: string;
+  authDetected: boolean;
+  phases: string[];
+  riskAreas: string[];
+}
+
+export interface VisualBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+}
+
 export interface Run {
   id: string;
   url: string;
   personaId: string;
+  viewport?: 'desktop' | 'mobile';
   status: RunStatus;
   maxSteps: number;
   timeoutMs: number;
   currentStep: number;
   totalSignals: number;
+  testPlan?: TestPlan | null;
   error?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -58,6 +76,7 @@ export interface Signal {
   stepNumber?: number | null;
   type: SignalType;
   message: string;
+  confidence?: number;
   data?: Record<string, any>;
   timestamp: string;
 }
@@ -72,6 +91,8 @@ export interface Finding {
   reproductionSteps: string[];
   suggestedFix: string;
   firstDetectedStep: number;
+  annotatedScreenshotPath?: string | null;
+  visualBoundingBox?: VisualBoundingBox | null;
   evidence?: Record<string, any>;
   timestamp: string;
 }
@@ -79,6 +100,7 @@ export interface Finding {
 export interface RunReport {
   run: Run;
   persona?: Persona;
+  testPlan?: TestPlan | null;
   steps: Step[];
   signals: Signal[];
   findings: Finding[];
@@ -92,12 +114,14 @@ export interface RunReport {
     highCount: number;
     mediumCount: number;
     lowCount: number;
+    visualCount: number;
   };
 }
 
 export interface CreateRunRequest {
   url: string;
   personaId?: string;
+  viewport?: 'desktop' | 'mobile';
   maxSteps?: number;
   timeoutMs?: number;
   chaosMode?: boolean;

@@ -10,7 +10,7 @@
     "dev:api": "bun run --cwd apps/api dev",
     "dev:web": "bun run --cwd apps/web dev",
     "dev:demo": "bun run --cwd demo-app dev",
-    "test": "bun test",
+    "test": "bun test apps/api/tests",
     "seed": "bun scripts/seed-personas.ts"
   }
 }

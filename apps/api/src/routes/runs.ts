@@ -20,7 +20,7 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
   .post(
     '/',
     async ({ body, set }) => {
-      const { url, personaId, maxSteps, timeoutMs } = body as CreateRunRequest;
+      const { url, personaId, maxSteps, timeoutMs, viewport } = body as CreateRunRequest;
 
       if (!url) {
         set.status = 400;
@@ -34,6 +34,7 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
         personaId: personaId || 'gremlin',
         maxSteps: maxSteps || 20,
         timeoutMs: timeoutMs || 60000,
+        viewport: viewport || 'desktop',
       });
 
       // Enqueue the run for background execution
@@ -49,6 +50,7 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
         maxSteps: t.Optional(t.Number()),
         timeoutMs: t.Optional(t.Number()),
         chaosMode: t.Optional(t.Boolean()),
+        viewport: t.Optional(t.Union([t.Literal('desktop'), t.Literal('mobile')])),
       }),
     }
   )
@@ -166,6 +168,8 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
 
     if (filePath.endsWith('.png')) {
       set.headers['Content-Type'] = 'image/png';
+    } else if (filePath.endsWith('.svg')) {
+      set.headers['Content-Type'] = 'image/svg+xml';
     } else if (filePath.endsWith('.ts') || filePath.endsWith('.js')) {
       set.headers['Content-Type'] = 'text/plain; charset=utf-8';
     } else if (filePath.endsWith('.zip')) {

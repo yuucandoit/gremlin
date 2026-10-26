@@ -1,5 +1,5 @@
 import type { DecisionResult } from '@gremlin/shared';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export interface ObservationData {
@@ -8,6 +8,7 @@ export interface ObservationData {
   personaId: string;
   stepNumber: number;
   maxSteps: number;
+  screenshotPath?: string;
   interactiveElements: Array<{
     selector: string;
     tag: string;
@@ -47,13 +48,36 @@ export class LLMClient {
   private apiKey: string | undefined;
   private baseUrl: string;
   private model: string;
+  private museSparkModel: string;
+  private museCodeModel: string;
+  private samModel: string;
   private decidePromptTemplate: string;
   private reportPromptTemplate: string;
 
   constructor() {
-    this.apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
-    this.baseUrl = process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
-    this.model = process.env.LLM_MODEL || 'gpt-4o-mini';
+    this.apiKey = process.env.META_API_KEY || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+    this.baseUrl =
+      process.env.META_MODEL_BASE_URL ||
+      process.env.LLM_BASE_URL ||
+      'https://api.openai.com/v1';
+
+    // Model mappings for Meta Hackathon stack:
+    // Muse Spark for Multimodal Vision & Action Decision
+    this.museSparkModel =
+      process.env.MUSE_SPARK_MODEL ||
+      process.env.LLM_MODEL ||
+      'meta-muse/muse-spark';
+
+    // Muse Code for Root Cause Synthesis & Regression Test Generation
+    this.museCodeModel =
+      process.env.MUSE_CODE_MODEL ||
+      process.env.LLM_MODEL ||
+      'meta-muse/muse-code';
+
+    // SAM 3.1 for Visual Defect Bounding Box & Anomaly Segmentation
+    this.samModel = process.env.SAM_MODEL || 'meta-sam/sam-3.1';
+
+    this.model = this.museSparkModel;
 
     try {
       this.decidePromptTemplate = readFileSync(
@@ -78,19 +102,27 @@ export class LLMClient {
     return this.model;
   }
 
+  getMetaModels() {
+    return {
+      spark: this.museSparkModel,
+      code: this.museCodeModel,
+      sam: this.samModel,
+    };
+  }
+
   async decideAction(
     obs: ObservationData,
     personaSystemPrompt: string
   ): Promise<DecisionResult> {
     if (this.apiKey) {
       try {
-        console.log(`[Gremlin AI] 🧠 Querying ${this.model} for step ${obs.stepNumber}/${obs.maxSteps}...`);
+        console.log(`[Gremlin AI] 🧠 Querying Meta Muse Spark (${this.museSparkModel}) with Vision for step ${obs.stepNumber}/${obs.maxSteps}...`);
         const result = await this.callLLMForDecision(obs, personaSystemPrompt);
         console.log(`[Gremlin AI] 💡 Model Thought: "${result.thought}"`);
         console.log(`[Gremlin AI] 🎯 Decided Action: ${result.action.type} ${'selector' in result.action ? `-> ${result.action.selector}` : ''}`);
         return result;
       } catch (err) {
-        console.warn(`[Gremlin AI] ⚠️ API call to ${this.model} failed, falling back to autonomous heuristic:`, err);
+        console.warn(`[Gremlin AI] ⚠️ API call to ${this.museSparkModel} failed, falling back to autonomous heuristic:`, err);
       }
     } else {
       console.log(`[Gremlin AI] ⚡ Autonomous heuristic engine active (no LLM_API_KEY found)`);
@@ -123,21 +155,62 @@ ${JSON.stringify(obs.interactiveElements.slice(0, 30), null, 2)}
 
 Decide the best next action:`;
 
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+    // Multimodal Vision: Check if screenshot is available
+    const userContent: any[] = [{ type: 'text', text: userMessage }];
+    let hasVision = false;
+
+    if (obs.screenshotPath && existsSync(obs.screenshotPath)) {
+      try {
+        const imageBuffer = readFileSync(obs.screenshotPath);
+        const base64 = imageBuffer.toString('base64');
+        userContent.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:image/png;base64,${base64}`,
+          },
+        });
+        hasVision = true;
+      } catch (e) {
+        console.warn('[LLMClient] Failed encoding screenshot for vision input:', e);
+      }
+    }
+
+    // Attempt multimodal vision request
+    let res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        model: this.model,
+        model: this.museSparkModel,
         messages: [
           { role: 'system', content: prompt },
-          { role: 'user', content: userMessage },
+          { role: 'user', content: hasVision ? userContent : userMessage },
         ],
         temperature: 0.7,
       }),
     });
+
+    // If model returned 400 (e.g. text-only model rejects image_url), retry with text-only
+    if (!res.ok && hasVision) {
+      console.log('[LLMClient] Vision rejected by endpoint, falling back to text-only prompt...');
+      res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.museSparkModel,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: userMessage },
+          ],
+          temperature: 0.7,
+        }),
+      });
+    }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
@@ -152,6 +225,32 @@ Decide the best next action:`;
       thought: parsed.thought || 'Executing planned exploration step.',
       action: parsed.action,
     };
+  }
+
+  async generateReconPlan(prompt: string): Promise<any> {
+    if (!this.apiKey) return null;
+
+    try {
+      const res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.museSparkModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+        }),
+      });
+
+      if (!res.ok) return null;
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || '{}';
+      return JSON.parse(cleanJson(content));
+    } catch {
+      return null;
+    }
   }
 
   private heuristicDecision(obs: ObservationData): DecisionResult {
@@ -277,7 +376,7 @@ Decide the best next action:`;
   ): Promise<any[]> {
     if (this.apiKey) {
       try {
-        console.log(`[Gremlin AI] 🔍 Synthesizing findings with ${this.model}...`);
+        console.log(`[Gremlin AI] 🔍 Synthesizing findings with Meta Muse Code (${this.museCodeModel})...`);
         const res = await fetch(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -285,7 +384,7 @@ Decide the best next action:`;
             Authorization: `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify({
-            model: this.model,
+            model: this.museCodeModel,
             messages: [
               { role: 'system', content: this.reportPromptTemplate },
               {
@@ -301,11 +400,11 @@ Decide the best next action:`;
           const data = await res.json();
           const content = data.choices?.[0]?.message?.content || '[]';
           const parsed = JSON.parse(cleanJson(content));
-          console.log(`[Gremlin AI] ✅ Successfully synthesized ${parsed.length} findings via ${this.model}`);
+          console.log(`[Gremlin AI] ✅ Successfully synthesized ${parsed.length} findings via ${this.museCodeModel}`);
           return parsed;
         }
       } catch (err) {
-        console.warn(`[Gremlin AI] ⚠️ Report synthesis via ${this.model} failed, falling back to deterministic builder:`, err);
+        console.warn(`[Gremlin AI] ⚠️ Report synthesis via ${this.museCodeModel} failed, falling back to deterministic builder:`, err);
       }
     }
 

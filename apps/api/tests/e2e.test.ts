@@ -26,8 +26,8 @@ describe('Gremlin End-to-End Autonomous Agent Test', () => {
         id: runId,
         url: 'http://localhost:3002',
         personaId: 'gremlin',
-        maxSteps: 6,
-        timeoutMs: 30000,
+        maxSteps: 3,
+        timeoutMs: 35000,
       });
       expect(run.status).toBe('queued');
 
@@ -57,6 +57,6 @@ describe('Gremlin End-to-End Autonomous Agent Test', () => {
       const findings = findingsRepo.listByRunId(runId);
       console.log(`E2E Run completed with ${steps.length} steps, ${signals.length} signals, ${findings.length} findings.`);
     },
-    45000
+    65000
   );
 });

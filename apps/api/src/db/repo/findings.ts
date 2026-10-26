@@ -1,4 +1,4 @@
-import type { Finding, FindingCategory, Severity } from '@gremlin/shared';
+import type { Finding, FindingCategory, Severity, VisualBoundingBox } from '@gremlin/shared';
 import { db } from '../client';
 
 export interface CreateFindingInput {
@@ -11,14 +11,16 @@ export interface CreateFindingInput {
   reproductionSteps: string[];
   suggestedFix: string;
   firstDetectedStep: number;
+  annotatedScreenshotPath?: string | null;
+  visualBoundingBox?: VisualBoundingBox | null;
   evidence?: Record<string, any>;
 }
 
 export const findingsRepo = {
   create(input: CreateFindingInput): Finding {
     db.prepare(`
-      INSERT INTO findings (id, run_id, title, description, severity, category, reproduction_steps_json, suggested_fix, first_detected_step, evidence_json, created_at)
-      VALUES ($id, $runId, $title, $description, $severity, $category, $reproductionStepsJson, $suggestedFix, $firstDetectedStep, $evidenceJson, datetime('now'))
+      INSERT INTO findings (id, run_id, title, description, severity, category, reproduction_steps_json, suggested_fix, first_detected_step, annotated_screenshot_path, visual_bbox_json, evidence_json, created_at)
+      VALUES ($id, $runId, $title, $description, $severity, $category, $reproductionStepsJson, $suggestedFix, $firstDetectedStep, $annotatedScreenshotPath, $visualBboxJson, $evidenceJson, datetime('now'))
     `).run({
       $id: input.id,
       $runId: input.runId,
@@ -29,6 +31,8 @@ export const findingsRepo = {
       $reproductionStepsJson: JSON.stringify(input.reproductionSteps),
       $suggestedFix: input.suggestedFix,
       $firstDetectedStep: input.firstDetectedStep,
+      $annotatedScreenshotPath: input.annotatedScreenshotPath ?? null,
+      $visualBboxJson: input.visualBoundingBox ? JSON.stringify(input.visualBoundingBox) : null,
       $evidenceJson: input.evidence ? JSON.stringify(input.evidence) : null,
     });
 
@@ -40,7 +44,8 @@ export const findingsRepo = {
       .prepare(
         `SELECT id, run_id as runId, title, description, severity, category,
                 reproduction_steps_json as reproductionStepsJson, suggested_fix as suggestedFix,
-                first_detected_step as firstDetectedStep, evidence_json as evidenceJson,
+                first_detected_step as firstDetectedStep, annotated_screenshot_path as annotatedScreenshotPath,
+                visual_bbox_json as visualBboxJson, evidence_json as evidenceJson,
                 created_at as timestamp
          FROM findings WHERE id = ?`
       )
@@ -58,6 +63,8 @@ export const findingsRepo = {
       reproductionSteps: JSON.parse(row.reproductionStepsJson),
       suggestedFix: row.suggestedFix,
       firstDetectedStep: row.firstDetectedStep,
+      annotatedScreenshotPath: row.annotatedScreenshotPath,
+      visualBoundingBox: row.visualBboxJson ? JSON.parse(row.visualBboxJson) : undefined,
       evidence: row.evidenceJson ? JSON.parse(row.evidenceJson) : undefined,
       timestamp: row.timestamp,
     };
@@ -68,7 +75,8 @@ export const findingsRepo = {
       .prepare(
         `SELECT id, run_id as runId, title, description, severity, category,
                 reproduction_steps_json as reproductionStepsJson, suggested_fix as suggestedFix,
-                first_detected_step as firstDetectedStep, evidence_json as evidenceJson,
+                first_detected_step as firstDetectedStep, annotated_screenshot_path as annotatedScreenshotPath,
+                visual_bbox_json as visualBboxJson, evidence_json as evidenceJson,
                 created_at as timestamp
          FROM findings WHERE run_id = ? ORDER BY
           CASE severity
@@ -91,6 +99,8 @@ export const findingsRepo = {
       reproductionSteps: JSON.parse(row.reproductionStepsJson),
       suggestedFix: row.suggestedFix,
       firstDetectedStep: row.firstDetectedStep,
+      annotatedScreenshotPath: row.annotatedScreenshotPath,
+      visualBoundingBox: row.visualBboxJson ? JSON.parse(row.visualBboxJson) : undefined,
       evidence: row.evidenceJson ? JSON.parse(row.evidenceJson) : undefined,
       timestamp: row.timestamp,
     }));
