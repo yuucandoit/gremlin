@@ -10,6 +10,7 @@ import { streamManager } from '../lib/stream';
 import { ReportBuilder } from '../report/builder';
 import { exportRegressionSpec } from '../report/exportSpec';
 import { executeAction } from './act';
+import { injectVirtualCursor } from './cursor';
 import { decideNextAction } from './decide';
 import { ConsoleDetector } from './detectors/console';
 import { DeadClickDetector } from './detectors/deadClick';
@@ -56,6 +57,9 @@ export async function runAgentLoop(runId: string): Promise<void> {
 
     page = await context.newPage();
 
+    // Inject high-visibility virtual cursor and click ripple into Chromium
+    await injectVirtualCursor(page);
+
     // Attach Chrome DevTools Protocol (CDP) live screencast for real-time streaming
     let cdp: CDPSession | null = null;
     try {
@@ -89,6 +93,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
     try {
       await page.goto(run.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       recentUrls.push(page.url());
+      await injectVirtualCursor(page);
     } catch (err: any) {
       const navSignal = signalsRepo.create({
         id: crypto.randomUUID(),
