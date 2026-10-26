@@ -5,6 +5,7 @@ export interface CreateStepInput {
   id: string;
   runId: string;
   stepNumber: number;
+  actor?: 'agent' | 'human';
   action: any;
   thought: string;
   screenshotPath?: string | null;
@@ -15,12 +16,13 @@ export interface CreateStepInput {
 export const stepsRepo = {
   create(input: CreateStepInput): Step {
     db.prepare(`
-      INSERT INTO steps (id, run_id, step_number, action_json, thought, screenshot_path, aria_snapshot, duration_ms, created_at)
-      VALUES ($id, $runId, $stepNumber, $actionJson, $thought, $screenshotPath, $ariaSnapshot, $durationMs, datetime('now'))
+      INSERT INTO steps (id, run_id, step_number, actor, action_json, thought, screenshot_path, aria_snapshot, duration_ms, created_at)
+      VALUES ($id, $runId, $stepNumber, $actor, $actionJson, $thought, $screenshotPath, $ariaSnapshot, $durationMs, datetime('now'))
     `).run({
       $id: input.id,
       $runId: input.runId,
       $stepNumber: input.stepNumber,
+      $actor: input.actor || 'agent',
       $actionJson: JSON.stringify(input.action),
       $thought: input.thought,
       $screenshotPath: input.screenshotPath ?? null,
@@ -34,7 +36,7 @@ export const stepsRepo = {
   getById(id: string): Step | null {
     const row = db
       .prepare(
-        `SELECT id, run_id as runId, step_number as stepNumber, action_json as actionJson,
+        `SELECT id, run_id as runId, step_number as stepNumber, actor, action_json as actionJson,
                 thought, screenshot_path as screenshotPath, aria_snapshot as ariaSnapshot,
                 duration_ms as durationMs, created_at as timestamp
          FROM steps WHERE id = ?`
@@ -47,6 +49,7 @@ export const stepsRepo = {
       id: row.id,
       runId: row.runId,
       stepNumber: row.stepNumber,
+      actor: row.actor || 'agent',
       action: JSON.parse(row.actionJson),
       thought: row.thought,
       screenshotPath: row.screenshotPath,
@@ -59,7 +62,7 @@ export const stepsRepo = {
   listByRunId(runId: string): Step[] {
     const rows = db
       .prepare(
-        `SELECT id, run_id as runId, step_number as stepNumber, action_json as actionJson,
+        `SELECT id, run_id as runId, step_number as stepNumber, actor, action_json as actionJson,
                 thought, screenshot_path as screenshotPath, aria_snapshot as ariaSnapshot,
                 duration_ms as durationMs, created_at as timestamp
          FROM steps WHERE run_id = ? ORDER BY step_number ASC`
@@ -70,6 +73,7 @@ export const stepsRepo = {
       id: row.id,
       runId: row.runId,
       stepNumber: row.stepNumber,
+      actor: row.actor || 'agent',
       action: JSON.parse(row.actionJson),
       thought: row.thought,
       screenshotPath: row.screenshotPath,

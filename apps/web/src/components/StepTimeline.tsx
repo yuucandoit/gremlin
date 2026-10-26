@@ -113,6 +113,15 @@ export function StepTimeline({ runId, steps, signals = [] }: StepTimelineProps) 
                     <span className="text-xs font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
                       Step #{step.stepNumber}
                     </span>
+                    {step.actor === 'human' ? (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 font-mono">
+                        <span>👤</span> Human
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-mono">
+                        <span>👾</span> AI
+                      </span>
+                    )}
                     {getActionBadge(step.action)}
                     {'selector' in step.action && (
                       <code className="text-xs text-sky-300 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/50 max-w-xs truncate">

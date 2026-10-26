@@ -5,35 +5,38 @@ export function exportRegressionSpec(
   runId: string,
   targetUrl: string,
   steps: Step[],
-  findings: Finding[]
+  findings: Finding[],
+  viewport?: 'desktop' | 'mobile'
 ): string {
   const primaryFinding = findings[0];
   const testTitle = primaryFinding
     ? `Regression: ${primaryFinding.title}`
     : `Regression Run ${runId}`;
 
+  const isMobile = viewport === 'mobile';
   const generatedSteps: string[] = [];
 
   for (const step of steps) {
     const act = step.action;
+    const actorLabel = step.actor === 'human' ? 'HUMAN CO-PILOT' : 'GREMLIN AI';
     switch (act.type) {
       case 'navigate':
-        generatedSteps.push(`  // Step ${step.stepNumber}: Navigate`);
+        generatedSteps.push(`  // Step ${step.stepNumber} [${actorLabel}]: Navigate`);
         generatedSteps.push(`  await page.goto('${act.url}', { waitUntil: 'domcontentloaded' });`);
         break;
 
       case 'click':
-        generatedSteps.push(`  // Step ${step.stepNumber}: Click`);
+        generatedSteps.push(`  // Step ${step.stepNumber} [${actorLabel}]: Click`);
         generatedSteps.push(`  await page.locator('${act.selector}').first().click();`);
         break;
 
       case 'double_click':
-        generatedSteps.push(`  // Step ${step.stepNumber}: Double Click`);
+        generatedSteps.push(`  // Step ${step.stepNumber} [${actorLabel}]: Double Click`);
         generatedSteps.push(`  await page.locator('${act.selector}').first().dblclick({ delay: 50 });`);
         break;
 
       case 'type':
-        generatedSteps.push(`  // Step ${step.stepNumber}: Type`);
+        generatedSteps.push(`  // Step ${step.stepNumber} [${actorLabel}]: Type`);
         if (act.clearFirst) {
           generatedSteps.push(`  await page.locator('${act.selector}').first().fill('');`);
         }
@@ -43,7 +46,7 @@ export function exportRegressionSpec(
         break;
 
       case 'press_key':
-        generatedSteps.push(`  // Step ${step.stepNumber}: Press Key`);
+        generatedSteps.push(`  // Step ${step.stepNumber} [${actorLabel}]: Press Key`);
         if (act.selector) {
           generatedSteps.push(`  await page.locator('${act.selector}').first().focus();`);
         }
@@ -51,6 +54,7 @@ export function exportRegressionSpec(
         break;
 
       case 'wait':
+        generatedSteps.push(`  // Step ${step.stepNumber} [${actorLabel}]: Wait`);
         generatedSteps.push(`  await page.waitForTimeout(${act.ms});`);
         break;
     }
@@ -85,7 +89,7 @@ test.describe('Gremlin Automated Regression Suite', () => {
     });
 
     // Initial navigation
-    await page.goto('${targetUrl}', { waitUntil: 'networkidle' });
+    ${isMobile ? "await page.setViewportSize({ width: 390, height: 844 });\n    " : ''}await page.goto('${targetUrl}', { waitUntil: 'networkidle' });
 
 ${generatedSteps.join('\n\n')}
 

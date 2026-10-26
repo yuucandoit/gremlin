@@ -7,6 +7,7 @@ import { stepsRepo } from '../db/repo/steps';
 import { eventBus } from '../lib/events';
 import { storage } from '../lib/storage';
 import { streamManager } from '../lib/stream';
+import { sessionManager } from '../lib/session';
 import { ReportBuilder } from '../report/builder';
 import { exportRegressionSpec } from '../report/exportSpec';
 import { executeAction } from './act';
@@ -66,6 +67,9 @@ export async function runAgentLoop(runId: string): Promise<void> {
     await context.tracing.start({ screenshots: true, snapshots: true });
 
     page = await context.newPage();
+
+    // Register active session for Gremlin Playground (pause/resume & takeover)
+    sessionManager.register(runId, page, context);
 
     // Inject high-visibility virtual cursor and click ripple into Chromium
     await injectVirtualCursor(page);
@@ -136,6 +140,9 @@ export async function runAgentLoop(runId: string): Promise<void> {
 
     // 3. Main Agent Exploration Loop
     for (let stepNumber = 1; stepNumber <= maxSteps; stepNumber++) {
+      // Gremlin Playground: Halt exploration if user paused to take over
+      await sessionManager.waitIfPaused(runId);
+
       // Guardrail evaluation
       const guardrail = Guardrails.evaluate({
         currentStep: stepNumber,
@@ -187,6 +194,9 @@ export async function runAgentLoop(runId: string): Promise<void> {
         });
       }
 
+      // Check if human co-pilot submitted steering instruction during playground pause
+      const humanGuidance = sessionManager.consumeGuidance(runId);
+
       // B. Decide
       const decision = await decideNextAction({
         url: obs.url,
@@ -195,6 +205,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
         stepNumber,
         maxSteps,
         screenshotPath: obs.screenshotPath,
+        userGuidance: humanGuidance.instruction || undefined,
         interactiveElements: obs.interactiveElements,
         recentActions,
         recentSignals: collectedSignals,
@@ -339,7 +350,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
     }
 
     // 5. Generate Playwright regression spec
-    exportRegressionSpec(runId, run.url, collectedSteps, findings);
+    exportRegressionSpec(runId, run.url, collectedSteps, findings, run.viewport);
 
     // Stop tracing and save trace.zip
     const tracePath = storage.getTracePath(runId);
@@ -371,6 +382,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
     });
     throw err;
   } finally {
+    sessionManager.unregister(runId);
     if (cdp) {
       await cdp.send('Page.stopScreencast').catch(() => {});
       await cdp.detach().catch(() => {});

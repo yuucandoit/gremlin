@@ -1,4 +1,4 @@
-export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type RunStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -61,6 +61,7 @@ export interface Step {
   id: string;
   runId: string;
   stepNumber: number;
+  actor?: 'agent' | 'human';
   action: import('./actions').AgentAction;
   thought: string;
   screenshotPath?: string | null;
@@ -125,4 +126,28 @@ export interface CreateRunRequest {
   maxSteps?: number;
   timeoutMs?: number;
   chaosMode?: boolean;
+}
+
+export interface InteractiveInputRequest {
+  type: 'click' | 'double_click' | 'type' | 'press_key' | 'scroll';
+  x?: number; // Normalized (0.0 to 1.0)
+  y?: number;
+  selector?: string;
+  text?: string;
+  key?: string;
+  deltaX?: number;
+  deltaY?: number;
+}
+
+export interface InspectElementResult {
+  selector: string;
+  tagName: string;
+  text: string;
+  role?: string;
+  box: VisualBoundingBox;
+}
+
+export interface ManualGuidanceRequest {
+  instruction: string;
+  targetSelector?: string;
 }

@@ -63,6 +63,22 @@ export function useRunEvents(runId: string, initialRun?: Run | null) {
               break;
             }
 
+            case 'run:paused': {
+              setState((prev) => ({
+                ...prev,
+                run: prev.run ? { ...prev.run, status: 'paused' } : prev.run,
+              }));
+              break;
+            }
+
+            case 'run:resumed': {
+              setState((prev) => ({
+                ...prev,
+                run: prev.run ? { ...prev.run, status: 'running' } : prev.run,
+              }));
+              break;
+            }
+
             case 'run:progress': {
               setState((prev) => ({
                 ...prev,
@@ -144,6 +160,8 @@ export function useRunEvents(runId: string, initialRun?: Run | null) {
       // Listen to generic messages and typed events
       eventSource.onmessage = handleEvent;
       eventSource.addEventListener('run:started', handleEvent as EventListener);
+      eventSource.addEventListener('run:paused', handleEvent as EventListener);
+      eventSource.addEventListener('run:resumed', handleEvent as EventListener);
       eventSource.addEventListener('run:progress', handleEvent as EventListener);
       eventSource.addEventListener('step:acted', handleEvent as EventListener);
       eventSource.addEventListener('signal:detected', handleEvent as EventListener);

@@ -2,6 +2,8 @@ import type { Finding, Run, Signal, Step, TestPlan } from './types';
 
 export type RunEventType =
   | 'run:started'
+  | 'run:paused'
+  | 'run:resumed'
   | 'test_plan:ready'
   | 'run:progress'
   | 'step:observed'
@@ -20,6 +22,10 @@ export interface BaseRunEvent<TType extends RunEventType, TPayload> {
 }
 
 export type RunStartedEvent = BaseRunEvent<'run:started', { run: Run }>;
+
+export type RunPausedEvent = BaseRunEvent<'run:paused', { runId: string }>;
+
+export type RunResumedEvent = BaseRunEvent<'run:resumed', { runId: string }>;
 
 export type TestPlanReadyEvent = BaseRunEvent<'test_plan:ready', { testPlan: TestPlan }>;
 
@@ -63,6 +69,8 @@ export type HeartbeatEvent = BaseRunEvent<'heartbeat', { count: number }>;
 
 export type RunEvent =
   | RunStartedEvent
+  | RunPausedEvent
+  | RunResumedEvent
   | TestPlanReadyEvent
   | RunProgressEvent
   | StepObservedEvent

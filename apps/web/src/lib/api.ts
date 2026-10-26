@@ -45,6 +45,59 @@ export async function cancelRun(id: string): Promise<void> {
   await fetch(`${API_BASE}/runs/${id}/cancel`, { method: 'POST' });
 }
 
+export async function pauseRun(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/runs/${id}/pause`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to pause run');
+}
+
+export async function resumeRun(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/runs/${id}/resume`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to resume run');
+}
+
+export async function sendPlaygroundInput(
+  id: string,
+  input: import('@gremlin/shared').InteractiveInputRequest
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/runs/${id}/input`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Input failed' }));
+    throw new Error(err.error || 'Failed to dispatch input');
+  }
+  return res.json();
+}
+
+export async function inspectPlaygroundElement(
+  id: string,
+  x: number,
+  y: number
+): Promise<import('@gremlin/shared').InspectElementResult | null> {
+  const res = await fetch(`${API_BASE}/runs/${id}/inspect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x, y }),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function submitPlaygroundGuidance(
+  id: string,
+  instruction: string,
+  targetSelector?: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/runs/${id}/instruct`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction, targetSelector }),
+  });
+  if (!res.ok) throw new Error('Failed to submit guidance instruction');
+}
+
 export function getArtifactUrl(runId: string, relativePath: string): string {
   return `${API_BASE}/runs/${runId}/artifacts/${relativePath}`;
 }

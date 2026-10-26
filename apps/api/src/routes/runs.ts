@@ -9,6 +9,7 @@ import { stepsRepo } from '../db/repo/steps';
 import { runQueue } from '../lib/queue';
 import { storage } from '../lib/storage';
 import { streamManager } from '../lib/stream';
+import { sessionManager } from '../lib/session';
 
 export const runsRoutes = new Elysia({ prefix: '/runs' })
   // List all runs
@@ -89,6 +90,94 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
 
     return { success: true, message: 'Run cancelled' };
   })
+
+  // Pause active run (Gremlin Playground Mode)
+  .post('/:id/pause', ({ params: { id }, set }) => {
+    const success = sessionManager.pause(id);
+    if (!success) {
+      set.status = 400;
+      return { error: 'Unable to pause run (not active or already paused)' };
+    }
+    return { success: true, status: 'paused', message: 'Gremlin Playground active. Manual takeover enabled.' };
+  })
+
+  // Resume paused run
+  .post('/:id/resume', ({ params: { id }, set }) => {
+    const success = sessionManager.resume(id);
+    if (!success) {
+      set.status = 400;
+      return { error: 'Unable to resume run (not paused)' };
+    }
+    return { success: true, status: 'running', message: 'Autonomous agent resumed.' };
+  })
+
+  // Manual interactive input in Playground
+  .post(
+    '/:id/input',
+    async ({ params: { id }, body, set }) => {
+      try {
+        const step = await sessionManager.sendInput(id, body as any);
+        return { success: true, step };
+      } catch (err: any) {
+        set.status = 400;
+        return { error: err?.message || String(err) };
+      }
+    },
+    {
+      body: t.Object({
+        type: t.Union([
+          t.Literal('click'),
+          t.Literal('double_click'),
+          t.Literal('type'),
+          t.Literal('press_key'),
+          t.Literal('scroll'),
+        ]),
+        x: t.Optional(t.Number()),
+        y: t.Optional(t.Number()),
+        selector: t.Optional(t.String()),
+        text: t.Optional(t.String()),
+        key: t.Optional(t.String()),
+        deltaX: t.Optional(t.Number()),
+        deltaY: t.Optional(t.Number()),
+      }),
+    }
+  )
+
+  // Inspect element under coordinate
+  .post(
+    '/:id/inspect',
+    async ({ params: { id }, body, set }) => {
+      const { x, y } = body as { x: number; y: number };
+      const result = await sessionManager.inspectAt(id, x, y);
+      if (!result) {
+        set.status = 404;
+        return { error: 'No element detected at coordinates' };
+      }
+      return result;
+    },
+    {
+      body: t.Object({
+        x: t.Number(),
+        y: t.Number(),
+      }),
+    }
+  )
+
+  // Submit steering guidance prompt
+  .post(
+    '/:id/instruct',
+    ({ params: { id }, body }) => {
+      const { instruction, targetSelector } = body as { instruction: string; targetSelector?: string };
+      sessionManager.setGuidance(id, instruction, targetSelector);
+      return { success: true, message: 'Steering instruction received by Meta Muse Spark' };
+    },
+    {
+      body: t.Object({
+        instruction: t.String(),
+        targetSelector: t.Optional(t.String()),
+      }),
+    }
+  )
 
   // Live MJPEG Chromium stream
   .get('/:id/stream', ({ params: { id }, set }) => {

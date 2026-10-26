@@ -22,7 +22,7 @@ import {
   Terminal,
   XCircle,
 } from 'lucide-react';
-import { cancelRun, getRun, getRunReport } from '../../../lib/api';
+import { cancelRun, getRun, getRunReport, pauseRun, resumeRun } from '../../../lib/api';
 import { useRunEvents } from '../../../lib/useRunEvents';
 import { LiveBrowserView } from '../../../components/LiveBrowserView';
 import { StepTimeline } from '../../../components/StepTimeline';
@@ -72,6 +72,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const findings = liveState.findings.length > 0 ? liveState.findings : initialData?.findings || [];
 
   const isRunning = currentRun?.status === 'running' || currentRun?.status === 'queued';
+  const isPaused = currentRun?.status === 'paused';
 
   // Get current step thought & latest screenshot for fallback
   const lastStep = steps[steps.length - 1];
@@ -83,6 +84,24 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     navigator.clipboard.writeText(specCode);
     setCopiedSpec(true);
     setTimeout(() => setCopiedSpec(false), 2000);
+  };
+
+  const handlePause = async () => {
+    try {
+      await pauseRun(runId);
+      fetchFullReport();
+    } catch (err) {
+      console.error('Pause failed:', err);
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      await resumeRun(runId);
+      fetchFullReport();
+    } catch (err) {
+      console.error('Resume failed:', err);
+    }
   };
 
   const handleCancel = async () => {
@@ -114,14 +133,16 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
             {currentRun && (
               <span
                 className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
-                  currentRun.status === 'running'
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 animate-pulse'
-                    : currentRun.status === 'completed'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                  currentRun.status === 'paused'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                    : currentRun.status === 'running'
+                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 animate-pulse'
+                      : currentRun.status === 'completed'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                 }`}
               >
-                {currentRun.status}
+                {currentRun.status === 'paused' ? 'PLAYGROUND (PAUSED)' : currentRun.status}
               </span>
             )}
             {currentRun && (
@@ -170,10 +191,15 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
               targetUrl={currentRun?.url || 'http://localhost:3002'}
               currentUrl={currentRun?.url}
               isRunning={isRunning}
+              isPaused={isPaused}
+              onPause={handlePause}
+              onResume={handleResume}
+              onManualAction={fetchFullReport}
               currentThought={currentThought}
               latestScreenshotPath={latestScreenshotPath}
               currentStep={steps.length}
               maxSteps={currentRun?.maxSteps || 20}
+              viewport={currentRun?.viewport}
             />
           </div>
 

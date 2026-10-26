@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS steps (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
   step_number INTEGER NOT NULL,
+  actor TEXT NOT NULL DEFAULT 'agent',
   action_json TEXT NOT NULL,
   thought TEXT NOT NULL,
   screenshot_path TEXT,

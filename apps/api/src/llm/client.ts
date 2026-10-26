@@ -9,6 +9,7 @@ export interface ObservationData {
   stepNumber: number;
   maxSteps: number;
   screenshotPath?: string;
+  userGuidance?: string;
   interactiveElements: Array<{
     selector: string;
     tag: string;
@@ -142,7 +143,11 @@ export class LLMClient {
 
     const userMessage = `Current URL: ${obs.url}
 Page Title: ${obs.title}
-Step: ${obs.stepNumber} of ${obs.maxSteps}
+Step: ${obs.stepNumber} of ${obs.maxSteps}${
+      obs.userGuidance
+        ? `\n\n🎯 [HUMAN CO-PILOT STEERING GUIDANCE]: The QA engineer explicitly commanded: "${obs.userGuidance}". Prioritize testing this instruction immediately.`
+        : ''
+    }
 
 Recent Signals (Errors / Warnings):
 ${JSON.stringify(obs.recentSignals.slice(-3), null, 2)}

@@ -23,6 +23,9 @@ export function runMigrations(): void {
   try {
     db.exec(`ALTER TABLE findings ADD COLUMN visual_bbox_json TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE steps ADD COLUMN actor TEXT DEFAULT 'agent';`);
+  } catch {}
 }
 
 // Auto-run when executed directly

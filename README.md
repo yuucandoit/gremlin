@@ -212,6 +212,28 @@ The included demo application (`http://localhost:3002`) provides a realistic sto
 
 ---
 
+## 🎮 Gremlin Playground (Interactive Co-Pilot & Pause-and-Click Takeover)
+
+Gremlin can operate in two complementary modes: **Autonomous Mode** (hands-off exploration) and **Playground Mode** (interactive human-AI pair QA):
+
+1. **Instant Pause & Live Takeover**: Click `⏸️ Pause & Take Over` at any moment. Gremlin halts between steps and unlocks the live Chromium stream. Clicking, typing, or scrolling directly on the screencast translates coordinates and executes real mouse and keyboard actions inside Chromium.
+2. **Component Inspector ("Target for Chaos")**: Hover or click on any UI component in Playground mode to inspect its DOM tag, text, and CSS selector. Click `🎯 Target with Chaos Gremlin` to instruct Meta Muse Spark to focus adversarial testing specifically on that component.
+3. **Natural Language Steering**: Type instructions into the Playground steering bar (e.g. *"Try placing order with discount code DISCOUNT99 and empty name"*). On resume, Meta Muse Spark prioritizes your command.
+4. **Frictionless Authentication & Session Storage**: Manual login allows users to enter credentials, solve CAPTCHAs, or pass 2FA without exposing passwords to the LLM. Gremlin captures the browser's `storageState` on resume and continues testing as an authenticated user.
+5. **Unified Dual-Actor Regression Specs**: Every human action is recorded alongside AI steps (`actor: 'human'` vs `actor: 'agent'`). The generated Playwright regression suite outputs clean, human-readable test steps:
+   ```ts
+   // Step 2 [HUMAN CO-PILOT]: Click
+   await page.locator('#nav-login').first().click();
+
+   // Step 3 [HUMAN CO-PILOT]: Type
+   await page.locator('#input-login-email').first().pressSequentially("admin@glitchmart.com");
+
+   // Step 4 [GREMLIN AI]: Rapid Double Click
+   await page.locator('#btn-checkout-submit').first().dblclick({ delay: 50 });
+   ```
+
+---
+
 ## 📺 Real-Time Chromium Screencast & Virtual Cursor
 
 Unlike blind testing tools, Gremlin provides a real-time window into the agent's mind:
