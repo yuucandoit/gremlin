@@ -301,7 +301,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
                           <span className="text-xs font-bold font-mono text-slate-300 uppercase">
                             {sig.type}
                           </span>
-                          <span className="text-[10px] text-slate-500 font-mono">
+                          <span className="text-[10px] text-slate-500 font-mono" suppressHydrationWarning>
                             Step #{sig.stepNumber} • {new Date(sig.timestamp).toLocaleTimeString()}
                           </span>
                         </div>

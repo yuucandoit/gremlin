@@ -138,7 +138,7 @@ export default function RunsHistoryPage() {
                         {run.totalSignals} signals
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-slate-400">
+                    <td className="px-6 py-4 text-slate-400" suppressHydrationWarning>
                       {new Date(run.createdAt).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',

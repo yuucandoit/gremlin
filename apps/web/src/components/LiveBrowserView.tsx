@@ -35,16 +35,20 @@ export function LiveBrowserView({
   maxSteps = 20,
 }: LiveBrowserViewProps) {
   const [streamError, setStreamError] = useState(false);
-  const [streamKey, setStreamKey] = useState(Date.now());
+  const [streamKey, setStreamKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  useEffect(() => {
+    setStreamKey(Date.now());
+  }, []);
+
   // Live MJPEG stream URL
-  const streamUrl = `${API_BASE}/runs/${runId}/stream?t=${streamKey}`;
+  const streamUrl = `${API_BASE}/runs/${runId}/stream${streamKey ? `?t=${streamKey}` : ''}`;
 
   // Fallback single frame or step screenshot URL
   const fallbackUrl = latestScreenshotPath
     ? getArtifactUrl(runId, latestScreenshotPath)
-    : `${API_BASE}/runs/${runId}/stream/frame?t=${streamKey}`;
+    : `${API_BASE}/runs/${runId}/stream/frame${streamKey ? `?t=${streamKey}` : ''}`;
 
   const displayUrl = currentUrl || targetUrl;
 
@@ -145,6 +149,7 @@ export function LiveBrowserView({
             alt="Chromium Live Stream"
             onError={() => setStreamError(true)}
             className="w-full h-full object-contain select-none"
+            suppressHydrationWarning
           />
         ) : fallbackUrl ? (
           /* Fallback or Completed Screenshot */
@@ -152,6 +157,7 @@ export function LiveBrowserView({
             src={fallbackUrl}
             alt="Chromium Viewport"
             className="w-full h-full object-contain select-none"
+            suppressHydrationWarning
           />
         ) : (
           /* Placeholder while browser launches */

@@ -34,6 +34,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
   let page: Page | null = null;
+  let cdp: CDPSession | null = null;
 
   const collectedSteps: Step[] = [];
   const collectedSignals: Signal[] = [];
@@ -61,7 +62,6 @@ export async function runAgentLoop(runId: string): Promise<void> {
     await injectVirtualCursor(page);
 
     // Attach Chrome DevTools Protocol (CDP) live screencast for real-time streaming
-    let cdp: CDPSession | null = null;
     try {
       cdp = await context.newCDPSession(page);
       await cdp.send('Page.startScreencast', {
