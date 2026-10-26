@@ -7,9 +7,9 @@
     "demo-app"
   ],
   "scripts": {
-    "dev:api": "bun --cwd apps/api run --watch src/index.ts",
-    "dev:web": "bun --cwd apps/web run dev",
-    "dev:demo": "bun --cwd demo-app run dev",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:demo": "bun run --cwd demo-app dev",
     "test": "bun test",
     "seed": "bun scripts/seed-personas.ts"
   }
