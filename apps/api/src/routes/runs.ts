@@ -8,6 +8,7 @@ import { signalsRepo } from '../db/repo/signals';
 import { stepsRepo } from '../db/repo/steps';
 import { runQueue } from '../lib/queue';
 import { storage } from '../lib/storage';
+import { streamManager } from '../lib/stream';
 
 export const runsRoutes = new Elysia({ prefix: '/runs' })
   // List all runs
@@ -85,6 +86,71 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
     }
 
     return { success: true, message: 'Run cancelled' };
+  })
+
+  // Live MJPEG Chromium stream
+  .get('/:id/stream', ({ params: { id }, set }) => {
+    set.headers['Content-Type'] = 'multipart/x-mixed-replace; boundary=--frame';
+    set.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    set.headers['Connection'] = 'keep-alive';
+    set.headers['Pragma'] = 'no-cache';
+    set.headers['Access-Control-Allow-Origin'] = '*';
+
+    let cleanup: (() => void) | null = null;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        cleanup = streamManager.registerClient(id, controller);
+      },
+      cancel() {
+        if (cleanup) cleanup();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Connection': 'keep-alive',
+        'Pragma': 'no-cache',
+      },
+    });
+  })
+
+  // Single latest snapshot frame or fallback screenshot
+  .get('/:id/stream/frame', ({ params: { id }, set }) => {
+    const frame = streamManager.getLatestFrame(id);
+    if (frame) {
+      set.headers['Content-Type'] = 'image/jpeg';
+      set.headers['Cache-Control'] = 'no-cache';
+      return new Response(frame);
+    }
+
+    // Fallback to the latest step screenshot if exists
+    const steps = stepsRepo.listByRunId(id);
+    const lastStep = [...steps].reverse().find((s) => s.screenshotPath);
+    if (lastStep?.screenshotPath) {
+      const filePath = join(storage.getRunDir(id), lastStep.screenshotPath);
+      if (existsSync(filePath)) {
+        set.headers['Content-Type'] = 'image/png';
+        return Bun.file(filePath);
+      }
+    }
+
+    set.status = 404;
+    return 'No frame available';
+  })
+
+  // Active stream status info
+  .get('/:id/stream/status', ({ params: { id } }) => {
+    const run = runsRepo.getById(id);
+    const hasFrame = !!streamManager.getLatestFrame(id);
+    return {
+      runId: id,
+      isRunning: run?.status === 'running',
+      currentUrl: streamManager.getCurrentUrl(id) || run?.url,
+      hasFrame,
+    };
   })
 
   // Serve run artifacts (screenshots, regression spec)

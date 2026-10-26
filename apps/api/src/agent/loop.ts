@@ -1,11 +1,12 @@
 import type { AgentAction, Signal, Step } from '@gremlin/shared';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright';
 import { findingsRepo } from '../db/repo/findings';
 import { runsRepo } from '../db/repo/runs';
 import { signalsRepo } from '../db/repo/signals';
 import { stepsRepo } from '../db/repo/steps';
 import { eventBus } from '../lib/events';
 import { storage } from '../lib/storage';
+import { streamManager } from '../lib/stream';
 import { ReportBuilder } from '../report/builder';
 import { exportRegressionSpec } from '../report/exportSpec';
 import { executeAction } from './act';
@@ -54,6 +55,26 @@ export async function runAgentLoop(runId: string): Promise<void> {
     await context.tracing.start({ screenshots: true, snapshots: true });
 
     page = await context.newPage();
+
+    // Attach Chrome DevTools Protocol (CDP) live screencast for real-time streaming
+    let cdp: CDPSession | null = null;
+    try {
+      cdp = await context.newCDPSession(page);
+      await cdp.send('Page.startScreencast', {
+        format: 'jpeg',
+        quality: 75,
+        maxWidth: 1280,
+        maxHeight: 800,
+        everyNthFrame: 1,
+      });
+
+      cdp.on('Page.screencastFrame', async ({ data, sessionId }) => {
+        streamManager.broadcastFrame(runId, data);
+        await cdp?.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+      });
+    } catch (screencastErr) {
+      console.warn('[AgentLoop] CDP Screencast failed to start:', screencastErr);
+    }
 
     // 2. Initialize Detectors
     const consoleDetector = new ConsoleDetector(runId);
@@ -110,6 +131,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
       // A. Observe
       const obs = await observePage(page, runId, stepNumber);
       recentUrls.push(obs.url);
+      streamManager.setCurrentUrl(runId, obs.url);
 
       // Collect any signals that occurred prior to decision
       const preSignals = [...consoleDetector.flush(), ...networkDetector.flush()];
@@ -320,6 +342,11 @@ export async function runAgentLoop(runId: string): Promise<void> {
     });
     throw err;
   } finally {
+    if (cdp) {
+      await cdp.send('Page.stopScreencast').catch(() => {});
+      await cdp.detach().catch(() => {});
+    }
+    streamManager.endStream(runId);
     if (context) await context.close().catch(() => {});
     if (browser) await browser.close().catch(() => {});
   }
