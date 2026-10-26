@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM oven/bun:1.4
+        WORKDIR /app
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+            libpango-1.0-0 libcairo2 \
+            && rm -rf /var/lib/apt/lists/*
+        COPY package.json bun.lock ./
+        COPY packages/shared/package.json ./packages/shared/
+        COPY apps/api/package.json ./apps/api/
+        COPY apps/web/package.json ./apps/web/
+        COPY demo-app/package.json ./demo-app/
+        RUN bun install
+        RUN bun node_modules/.bun/playwright@*/node_modules/playwright/cli.js install chromium
+        COPY packages/shared ./packages/shared
+        COPY apps/api ./apps/api
+        EXPOSE 3001
+        CMD ["bun", "--cwd", "apps/api", "run", "src/index.ts"]
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DATABASE_PATH=/app/data/gremlin.db
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+
+  web:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM oven/bun:1.4
+        WORKDIR /app
+        COPY package.json bun.lock ./
+        COPY packages/shared/package.json ./packages/shared/
+        COPY apps/web/package.json ./apps/web/
+        RUN bun install
+        COPY packages/shared ./packages/shared
+        COPY apps/web ./apps/web
+        RUN bun --cwd apps/web build
+        EXPOSE 3000
+        CMD ["bun", "--cwd", "apps/web", "run", "start"]
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      - api
+
+  demo-app:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM oven/bun:1.4
+        WORKDIR /app
+        COPY package.json bun.lock ./
+        COPY demo-app/package.json ./demo-app/
+        RUN bun install
+        COPY demo-app ./demo-app
+        EXPOSE 3002
+        CMD ["bun", "--cwd", "demo-app", "run", "src/index.ts"]
+    ports:
+      - "3002:3002"

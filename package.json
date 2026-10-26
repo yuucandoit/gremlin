@@ -1,0 +1,16 @@
+{
+  "name": "gremlin",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "demo-app"
+  ],
+  "scripts": {
+    "dev:api": "bun --cwd apps/api run --watch src/index.ts",
+    "dev:web": "bun --cwd apps/web run dev",
+    "dev:demo": "bun --cwd demo-app run dev",
+    "test": "bun test",
+    "seed": "bun scripts/seed-personas.ts"
+  }
+}
