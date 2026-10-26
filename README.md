@@ -1,5 +1,9 @@
 # 👾 Gremlin
 
+<p align="center">
+  <img src="./gremlin.jpeg" alt="Gremlin Autonomous AI Agent" width="640" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
+</p>
+
 **Gremlin** is an autonomous AI-powered exploratory and chaos testing agent designed for modern web applications. Powered by **Bun 1.4**, **Elysia.js**, **Playwright**, and **Next.js**, Gremlin combines multimodal visual reasoning, automated DOM exploration, and real-time chaos injection. It watches live Chromium execution, reasons about user actions using persona-driven prompts, executes interactions with virtual cursor animations, and synthesizes bugs with visual annotations and self-healing regression test suites.
 
 ---
