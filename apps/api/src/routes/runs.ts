@@ -475,8 +475,17 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
       }
     }
 
-    set.status = 404;
-    return 'No frame available';
+    // Return high-tech loading SVG placeholder while Chromium finishes navigation
+    const placeholderSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" fill="#090d16">
+      <rect width="1280" height="800" fill="#0b1120"/>
+      <circle cx="640" cy="350" r="48" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+      <text x="640" y="362" font-family="-apple-system, sans-serif" font-size="36" text-anchor="middle" fill="#38bdf8">👾</text>
+      <text x="640" y="440" font-family="-apple-system, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#f8fafc">Menghubungkan ke Sesi Chromium Playwright...</text>
+      <text x="640" y="475" font-family="-apple-system, sans-serif" font-size="13" text-anchor="middle" fill="#94a3b8">Screencast viewport live akan muncul otomatis setelah browser selesai memuat halaman.</text>
+    </svg>`;
+    set.headers['Content-Type'] = 'image/svg+xml';
+    set.headers['Cache-Control'] = 'no-cache, no-store';
+    return new Response(placeholderSvg);
   })
 
   // Active stream status info

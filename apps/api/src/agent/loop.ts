@@ -23,7 +23,7 @@ import { Guardrails } from './guardrails';
 import { observePage } from './observe';
 import { getPersona } from './personas';
 import { evaluateScenarioVerdict } from './verdict';
-import { isLoggedIn, performLogin } from './auth';
+import { detectLoginWall, isLoggedIn, performLogin } from './auth';
 
 export async function runAgentLoop(runId: string): Promise<void> {
   const run = runsRepo.getById(runId);

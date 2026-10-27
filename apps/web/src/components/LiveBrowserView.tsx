@@ -83,6 +83,18 @@ export function LiveBrowserView({
     setStreamKey(Date.now());
   }, []);
 
+  // Auto-reconnect stream when error occurs during active run
+  useEffect(() => {
+    let retryTimer: any;
+    if (streamError && (isRunning || isPaused)) {
+      retryTimer = setTimeout(() => {
+        setStreamError(false);
+        setStreamKey(Date.now());
+      }, 1500);
+    }
+    return () => clearTimeout(retryTimer);
+  }, [streamError, isRunning, isPaused]);
+
   // Live MJPEG stream URL
   const streamUrl = `${API_BASE}/runs/${runId}/stream${streamKey ? `?t=${streamKey}` : ''}`;
 
