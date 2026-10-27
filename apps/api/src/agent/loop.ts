@@ -107,15 +107,69 @@ export async function runAgentLoop(runId: string): Promise<void> {
     networkDetector.attach(page);
 
     // Initial navigation
+    let baseAppUrl = run.url;
     try {
       await page.goto(run.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.waitForTimeout(600); // Allow any client-side redirect to settle
       recentUrls.push(page.url());
       discoveredRoutes.add(new URL(page.url()).pathname);
       await injectVirtualCursor(page);
 
+      baseAppUrl = page.url();
+
+      // Check if page redirected to a login wall or requires authentication BEFORE recon
+      const loginWall = await detectLoginWall(page);
+      const isAlreadyAuthed = await isLoggedIn(page);
+
+      if (loginWall.isLoginWall && !isAlreadyAuthed) {
+        // Check if user provided upfront credentials
+        const upfrontCreds = sessionManager.getCredentials(runId);
+        let authed = false;
+
+        if (upfrontCreds) {
+          console.log(`[AgentLoop] 🔐 Logging in with upfront credentials for ${upfrontCreds.username} before reconnaissance...`);
+          const loginRes = await performLogin(page, upfrontCreds, loginWall.selectors);
+          if (loginRes.success) {
+            authed = true;
+            await sessionManager.saveStorageState(runId);
+            baseAppUrl = page.url();
+            console.log(`[AgentLoop] ✅ Upfront login successful. Target application page is now: ${baseAppUrl}`);
+          } else {
+            console.warn(`[AgentLoop] ⚠️ Upfront login failed: ${loginRes.message}`);
+          }
+        }
+
+        if (!authed) {
+          console.log(`[AgentLoop] 🔒 Login wall detected upon accessing ${run.url} (${page.url()}). Pausing for user credentials before reconnaissance...`);
+          runsRepo.updateStatus(runId, 'paused');
+          sessionManager.triggerAuthRequired(runId, {
+            url: page.url(),
+            message: `Aplikasi teralihkan ke form login (${page.url()}). Masukkan email & password atau gunakan Gremlin Playground untuk login agar AI dapat masuk dan menyusun skenario aplikasi terautentikasi.`,
+            emailSelector: loginWall.selectors.userSelector,
+            passwordSelector: loginWall.selectors.passSelector,
+            submitSelector: loginWall.selectors.submitSelector,
+          });
+
+          // Wait for user to submit credentials via modal or Playground manual takeover
+          await sessionManager.waitForAuthIfNeeded(runId);
+
+          if (await isLoggedIn(page)) {
+            await sessionManager.saveStorageState(runId);
+            baseAppUrl = page.url();
+            console.log(`[AgentLoop] ✅ Sesi login tersimpan! Halaman aktif sekarang: ${baseAppUrl}`);
+          }
+        }
+      }
+
+      // Re-inject virtual cursor and update discovered routes after potential login redirection
+      await injectVirtualCursor(page);
+      recentUrls.push(page.url());
+      discoveredRoutes.add(new URL(page.url()).pathname);
+
       // Autonomous Reconnaissance & Structured Scenario Plan Formulation
+      // (Executes on the authenticated page if logged in, or target landing page!)
       try {
-        const { testPlan, scenarios } = await conductReconnaissance(page, runId, run.url, persona.name);
+        const { testPlan, scenarios } = await conductReconnaissance(page, runId, baseAppUrl, persona.name);
         runsRepo.updateTestPlan(runId, testPlan);
         eventBus.emitRunEvent({
           type: 'test_plan:ready',
@@ -174,19 +228,6 @@ export async function runAgentLoop(runId: string): Promise<void> {
       data: { runId },
     });
 
-    // Upfront login if credentials were provided
-    const upfrontCreds = sessionManager.getCredentials(runId);
-    if (upfrontCreds) {
-      console.log(`[AgentLoop] 🔐 Performing upfront authentication for ${upfrontCreds.username}...`);
-      const loginRes = await performLogin(page, upfrontCreds);
-      if (loginRes.success) {
-        await sessionManager.saveStorageState(runId);
-        console.log(`[AgentLoop] ✅ Upfront authentication successful.`);
-      } else {
-        console.warn(`[AgentLoop] ⚠️ Upfront authentication failed: ${loginRes.message}`);
-      }
-    }
-
     // 4. Scenario-Driven Execution Loop
     let globalStepNumber = 0;
 
@@ -218,11 +259,19 @@ export async function runAgentLoop(runId: string): Promise<void> {
 
       // Reset page before each scenario starts to avoid state pollution from prior tests
       try {
-        await page.goto(run.url, { waitUntil: 'domcontentloaded', timeout: 12000 });
+        await page.goto(baseAppUrl, { waitUntil: 'domcontentloaded', timeout: 12000 });
         recentUrls.push(page.url());
         await injectVirtualCursor(page);
       } catch (resetErr) {
-        console.warn(`[AgentLoop] Navigation reset to ${run.url} error:`, resetErr);
+        console.warn(`[AgentLoop] Navigation reset to ${baseAppUrl} error:`, resetErr);
+      }
+
+      if (scenario.authMode === 'tests_login') {
+        try {
+          const loginTarget = run.url.includes('/login') ? run.url : `${new URL(run.url).origin}/login`;
+          await page.goto(loginTarget, { waitUntil: 'domcontentloaded', timeout: 10000 });
+          await injectVirtualCursor(page);
+        } catch {}
       }
 
       // Check Authentication Requirement
@@ -231,6 +280,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
 
       if (scenarioNeedsAuth && !scenarioIsNegativeLogin) {
         let authenticated = await isLoggedIn(page);
+        const upfrontCreds = sessionManager.getCredentials(runId);
         if (!authenticated && upfrontCreds) {
           const loginRes = await performLogin(page, upfrontCreds);
           if (loginRes.success) {

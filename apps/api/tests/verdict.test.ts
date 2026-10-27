@@ -80,3 +80,4 @@ describe('Honest Scenario Verdict Evaluation (Zero Fake Passes)', () => {
     expect(res.checks.every((c) => c.result === 'met')).toBe(true);
   });
 });
+

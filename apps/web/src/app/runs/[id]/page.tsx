@@ -243,22 +243,22 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
       <div className="bg-card/70 border border-border rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
         {[
           {
+            id: 'auth',
+            label: '1. Navigasi & Cek Auth',
+            desc: liveState.authPrompt ? 'Form login terdeteksi (perlu login)' : 'Sesi aman / Terautentikasi',
+            status: liveState.authPrompt || showAuthModal ? 'active' : scenarios.length > 0 || currentRun?.status === 'completed' ? 'done' : 'active',
+          },
+          {
             id: 'recon',
-            label: '1. Reconnaissance',
-            desc: 'AI crawl & route discovery',
-            status: scenarios.length > 0 ? 'done' : isRunning ? 'active' : 'pending',
+            label: '2. Reconnaissance (AI)',
+            desc: scenarios.length > 0 ? 'Aplikasi berhasil dipetakan' : 'Menganalisis halaman aktif',
+            status: scenarios.length > 0 ? 'done' : isRunning && !liveState.authPrompt ? 'active' : 'pending',
           },
           {
             id: 'plan',
-            label: '2. Rencana Skenario',
+            label: '3. Rencana Skenario',
             desc: `${scenarios.length} skenario terstruktur`,
             status: currentRun?.status === 'planning' ? 'active' : scenarios.length > 0 ? 'done' : 'pending',
-          },
-          {
-            id: 'auth',
-            label: '3. Autentikasi Akun',
-            desc: liveState.authPrompt ? 'Perlu tindakan' : 'Sesi tersimpan / Guest',
-            status: liveState.authPrompt || showAuthModal ? 'active' : 'done',
           },
           {
             id: 'exec',
@@ -266,9 +266,9 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
             desc: isRunning
               ? `Langkah ${currentRun?.currentStep || 0}/${currentRun?.maxSteps || 0}`
               : currentRun?.status === 'completed'
-              ? 'Selesai'
-              : 'Siap',
-            status: isRunning ? 'active' : currentRun?.status === 'completed' ? 'done' : 'pending',
+              ? 'Selesai diuji'
+              : 'Menunggu mulai',
+            status: isRunning && currentRun?.status !== 'planning' && !liveState.authPrompt ? 'active' : currentRun?.status === 'completed' ? 'done' : 'pending',
           },
           {
             id: 'report',

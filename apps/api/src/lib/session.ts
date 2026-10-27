@@ -265,6 +265,24 @@ class SessionManager {
       session.authResolver = null;
       session.authPromise = null;
     }
+
+    if (session.isPaused) {
+      session.isPaused = false;
+      if (session.resumeResolver) {
+        session.resumeResolver();
+        session.resumeResolver = null;
+      }
+    }
+
+    if (runsRepo.getById(runId)?.status === 'paused') {
+      runsRepo.updateStatus(runId, 'running');
+      eventBus.emitRunEvent({
+        type: 'run:resumed',
+        runId,
+        timestamp: new Date().toISOString(),
+        data: { runId },
+      });
+    }
   }
 
   async waitForAuthIfNeeded(runId: string): Promise<void> {
@@ -366,6 +384,22 @@ class SessionManager {
         session.authPromise = null;
       }
 
+      if (session.isPaused) {
+        session.isPaused = false;
+        if (session.resumeResolver) {
+          session.resumeResolver();
+          session.resumeResolver = null;
+        }
+      }
+
+      runsRepo.updateStatus(runId, 'running');
+      eventBus.emitRunEvent({
+        type: 'run:resumed',
+        runId,
+        timestamp: new Date().toISOString(),
+        data: { runId },
+      });
+
       eventBus.emitRunEvent({
         type: 'auth:resolved',
         runId,
@@ -424,6 +458,12 @@ class SessionManager {
               timestamp: new Date().toISOString(),
               data: { scenario: s },
             });
+          }
+          if (session.authResolver) {
+            session.authRequired = false;
+            session.authResolver();
+            session.authResolver = null;
+            session.authPromise = null;
           }
         }
       })
