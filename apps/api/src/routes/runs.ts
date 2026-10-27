@@ -1,15 +1,18 @@
-import type { CreateRunRequest } from '@gremlin/shared';
+import type { CreateRunRequest, Scenario } from '@gremlin/shared';
 import { Elysia, t } from 'elysia';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findingsRepo } from '../db/repo/findings';
 import { runsRepo } from '../db/repo/runs';
+import { scenariosRepo } from '../db/repo/scenarios';
 import { signalsRepo } from '../db/repo/signals';
 import { stepsRepo } from '../db/repo/steps';
+import { eventBus } from '../lib/events';
 import { runQueue } from '../lib/queue';
 import { storage } from '../lib/storage';
 import { streamManager } from '../lib/stream';
 import { sessionManager } from '../lib/session';
+import { parseScenarioFromPrompt } from '../agent/recon';
 
 export const runsRoutes = new Elysia({ prefix: '/runs' })
   // List all runs
@@ -28,7 +31,7 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
   .post(
     '/',
     async ({ body, set }) => {
-      const { url, personaId, maxSteps, timeoutMs, viewport } = body as CreateRunRequest;
+      const { url, personaId, maxSteps, timeoutMs, viewport, autoApprove } = body as CreateRunRequest;
 
       if (!url) {
         set.status = 400;
@@ -43,6 +46,7 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
         maxSteps: maxSteps || 20,
         timeoutMs: timeoutMs || 60000,
         viewport: viewport || 'desktop',
+        autoApprove: autoApprove ?? false,
       });
 
       // Enqueue the run for background execution
@@ -58,12 +62,13 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
         maxSteps: t.Optional(t.Number()),
         timeoutMs: t.Optional(t.Number()),
         chaosMode: t.Optional(t.Boolean()),
+        autoApprove: t.Optional(t.Boolean()),
         viewport: t.Optional(t.Union([t.Literal('desktop'), t.Literal('mobile')])),
       }),
     }
   )
 
-  // Get run detail with steps and findings
+  // Get run detail with steps, findings, and scenarios
   .get('/:id', ({ params: { id }, set }) => {
     const run = runsRepo.getById(id);
     if (!run) {
@@ -74,12 +79,16 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
     const steps = stepsRepo.listByRunId(id);
     const signals = signalsRepo.listByRunId(id);
     const findings = findingsRepo.listByRunId(id);
+    const scenarios = scenariosRepo.listByRunId(id);
+    const coverage = scenariosRepo.getCoverage(id);
 
     return {
       run,
       steps,
       signals,
       findings,
+      scenarios,
+      coverage,
     };
   })
 
@@ -136,6 +145,161 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
     }
     return { success: true, status: 'running', message: 'Autonomous agent resumed.' };
   })
+
+  // Approve planning phase to trigger scenario execution
+  .post('/:id/approve', ({ params: { id }, set }) => {
+    const success = sessionManager.approve(id);
+    if (!success) {
+      set.status = 400;
+      return { error: 'Unable to approve run (not in active planning mode)' };
+    }
+    return { success: true, message: 'Test plan approved. Executing scenarios.' };
+  })
+
+  // List scenarios and coverage
+  .get('/:id/scenarios', ({ params: { id }, set }) => {
+    const run = runsRepo.getById(id);
+    if (!run) {
+      set.status = 404;
+      return { error: 'Run not found' };
+    }
+    const scenarios = scenariosRepo.listByRunId(id);
+    const coverage = scenariosRepo.getCoverage(id);
+    return { scenarios, coverage };
+  })
+
+  // Add custom scenario (via prompt or structured payload)
+  .post(
+    '/:id/scenarios',
+    async ({ params: { id }, body, set }) => {
+      const run = runsRepo.getById(id);
+      if (!run) {
+        set.status = 404;
+        return { error: 'Run not found' };
+      }
+
+      const existing = scenariosRepo.listByRunId(id);
+      let scenario: Scenario;
+
+      if ((body as any).prompt) {
+        scenario = await parseScenarioFromPrompt((body as any).prompt, id, existing.length);
+      } else {
+        const b = body as any;
+        scenario = scenariosRepo.create({
+          id: crypto.randomUUID(),
+          runId: id,
+          idx: existing.length,
+          title: b.title || 'Custom Test Scenario',
+          goal: b.goal || b.title || 'Execute targeted test action',
+          personaId: b.personaId || 'gremlin',
+          viewport: b.viewport || 'desktop',
+          needsAuth: Boolean(b.needsAuth),
+          risk: b.risk || 'low',
+          maxSteps: b.maxSteps || 8,
+          expect: Array.isArray(b.expect) && b.expect.length > 0 ? b.expect : ['Tidak terjadi crash', 'Halaman stabil'],
+          source: (b.source as any) || 'user',
+          enabled: b.enabled !== undefined ? Boolean(b.enabled) : b.risk !== 'high',
+          status: 'pending',
+          verdict: null,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      eventBus.emitRunEvent({
+        type: 'scenario:created',
+        runId: id,
+        timestamp: new Date().toISOString(),
+        data: { scenario },
+      });
+
+      set.status = 201;
+      return scenario;
+    },
+    {
+      body: t.Object({
+        prompt: t.Optional(t.String()),
+        title: t.Optional(t.String()),
+        goal: t.Optional(t.String()),
+        personaId: t.Optional(t.String()),
+        viewport: t.Optional(t.Union([t.Literal('desktop'), t.Literal('mobile')])),
+        needsAuth: t.Optional(t.Boolean()),
+        risk: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),
+        maxSteps: t.Optional(t.Number()),
+        expect: t.Optional(t.Array(t.String())),
+        enabled: t.Optional(t.Boolean()),
+        source: t.Optional(t.String()),
+      }),
+    }
+  )
+
+  // Update scenario (edit, enable/disable)
+  .put(
+    '/:id/scenarios/:scenarioId',
+    ({ params: { id, scenarioId }, body, set }) => {
+      const updated = scenariosRepo.update(scenarioId, body as any);
+      if (!updated) {
+        set.status = 404;
+        return { error: 'Scenario not found' };
+      }
+
+      eventBus.emitRunEvent({
+        type: 'scenario:updated',
+        runId: id,
+        timestamp: new Date().toISOString(),
+        data: { scenario: updated },
+      });
+
+      return updated;
+    },
+    {
+      body: t.Object({
+        title: t.Optional(t.String()),
+        goal: t.Optional(t.String()),
+        personaId: t.Optional(t.String()),
+        viewport: t.Optional(t.Union([t.Literal('desktop'), t.Literal('mobile')])),
+        needsAuth: t.Optional(t.Boolean()),
+        risk: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),
+        maxSteps: t.Optional(t.Number()),
+        expect: t.Optional(t.Array(t.String())),
+        enabled: t.Optional(t.Boolean()),
+        status: t.Optional(t.String()),
+        verdict: t.Optional(t.Union([t.String(), t.Null()])),
+      }),
+    }
+  )
+
+  // Delete scenario
+  .delete('/:id/scenarios/:scenarioId', ({ params: { id, scenarioId }, set }) => {
+    const deleted = scenariosRepo.delete(scenarioId);
+    if (!deleted) {
+      set.status = 404;
+      return { error: 'Scenario not found' };
+    }
+
+    eventBus.emitRunEvent({
+      type: 'scenario:deleted',
+      runId: id,
+      timestamp: new Date().toISOString(),
+      data: { scenarioId },
+    });
+
+    return { success: true, message: 'Scenario deleted' };
+  })
+
+  // Reorder scenarios
+  .post(
+    '/:id/scenarios/reorder',
+    ({ params: { id }, body }) => {
+      const { scenarioIds } = body as { scenarioIds: string[] };
+      const updated = scenariosRepo.reorder(id, scenarioIds);
+      return { success: true, scenarios: updated };
+    },
+    {
+      body: t.Object({
+        scenarioIds: t.Array(t.String()),
+      }),
+    }
+  )
 
   // Manual interactive input in Playground
   .post(

@@ -1,5 +1,6 @@
 import type { InspectElementResult, InteractiveInputRequest, Step } from '@gremlin/shared';
 import type { BrowserContext, Page } from 'playwright';
+import { existsSync } from 'node:fs';
 import { runsRepo } from '../db/repo/runs';
 import { stepsRepo } from '../db/repo/steps';
 import { eventBus } from './events';
@@ -12,6 +13,10 @@ export interface ActiveSession {
   isPaused: boolean;
   pausePromise: Promise<void> | null;
   resumeResolver: (() => void) | null;
+  approved: boolean;
+  approvalPromise: Promise<void> | null;
+  approvalResolver: (() => void) | null;
+  currentScenarioId?: string | null;
   userInstruction?: string | null;
   targetSelector?: string | null;
 }
@@ -19,7 +24,7 @@ export interface ActiveSession {
 class SessionManager {
   private sessions = new Map<string, ActiveSession>();
 
-  register(runId: string, page: Page, context: BrowserContext): void {
+  register(runId: string, page: Page, context: BrowserContext, autoApprove: boolean = false): void {
     this.sessions.set(runId, {
       runId,
       page,
@@ -27,6 +32,10 @@ class SessionManager {
       isPaused: false,
       pausePromise: null,
       resumeResolver: null,
+      approved: autoApprove,
+      approvalPromise: null,
+      approvalResolver: null,
+      currentScenarioId: null,
       userInstruction: null,
       targetSelector: null,
     });
@@ -37,6 +46,9 @@ class SessionManager {
     if (session?.resumeResolver) {
       session.resumeResolver();
     }
+    if (session?.approvalResolver) {
+      session.approvalResolver();
+    }
     this.sessions.delete(runId);
   }
 
@@ -46,6 +58,62 @@ class SessionManager {
 
   isPaused(runId: string): boolean {
     return this.sessions.get(runId)?.isPaused ?? false;
+  }
+
+  waitForApproval(runId: string): Promise<void> {
+    const session = this.sessions.get(runId);
+    if (!session || session.approved) return Promise.resolve();
+
+    if (!session.approvalPromise) {
+      session.approvalPromise = new Promise<void>((resolve) => {
+        session.approvalResolver = resolve;
+      });
+    }
+    return session.approvalPromise;
+  }
+
+  approve(runId: string): boolean {
+    const session = this.sessions.get(runId);
+    if (!session) return false;
+
+    session.approved = true;
+    if (session.approvalResolver) {
+      session.approvalResolver();
+      session.approvalResolver = null;
+      session.approvalPromise = null;
+    }
+    return true;
+  }
+
+  setCurrentScenarioId(runId: string, scenarioId: string | null): void {
+    const session = this.sessions.get(runId);
+    if (session) {
+      session.currentScenarioId = scenarioId;
+    }
+  }
+
+  getCurrentScenarioId(runId: string): string | null {
+    return this.sessions.get(runId)?.currentScenarioId || null;
+  }
+
+  async hasAuth(runId: string): Promise<boolean> {
+    const session = this.sessions.get(runId);
+    if (!session) return false;
+
+    try {
+      const cookies = await session.context.cookies();
+      const hasAuthCookie = cookies.some((c) => {
+        const n = c.name.toLowerCase();
+        return n.includes('token') || n.includes('session') || n.includes('auth') || n.includes('user');
+      });
+      if (hasAuthCookie) return true;
+
+      const runDir = storage.getRunDir(runId);
+      const authPath = `${runDir}/auth.json`;
+      return existsSync(authPath);
+    } catch {
+      return false;
+    }
   }
 
   pause(runId: string): boolean {
@@ -148,6 +216,7 @@ class SessionManager {
         const step = stepsRepo.create({
           id: crypto.randomUUID(),
           runId,
+          scenarioId: session.currentScenarioId || null,
           stepNumber: nextStepNum,
           actor: 'human',
           action: { type: 'click', selector },
@@ -181,6 +250,7 @@ class SessionManager {
         const step = stepsRepo.create({
           id: crypto.randomUUID(),
           runId,
+          scenarioId: session.currentScenarioId || null,
           stepNumber: nextStepNum,
           actor: 'human',
           action: { type: 'double_click', selector },
@@ -205,6 +275,7 @@ class SessionManager {
         const step = stepsRepo.create({
           id: crypto.randomUUID(),
           runId,
+          scenarioId: session.currentScenarioId || null,
           stepNumber: nextStepNum,
           actor: 'human',
           action: { type: 'type', selector: input.selector || 'activeElement', text: input.text },
@@ -229,6 +300,7 @@ class SessionManager {
         const step = stepsRepo.create({
           id: crypto.randomUUID(),
           runId,
+          scenarioId: session.currentScenarioId || null,
           stepNumber: nextStepNum,
           actor: 'human',
           action: { type: 'press_key', key: input.key },

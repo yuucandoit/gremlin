@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   API_BASE,
+  createScenario,
   getArtifactUrl,
   inspectPlaygroundElement,
   sendPlaygroundInput,
@@ -447,16 +448,40 @@ export function LiveBrowserView({
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                const prompt = `Focus exploratory chaos testing on element '${inspectedElement.selector}'`;
-                handleSendGuidance(undefined, prompt);
-              }}
-              className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg flex items-center gap-1.5 transition flex-shrink-0 cursor-pointer shadow-md"
-            >
-              <Target className="w-4 h-4" />
-              <span>Target with Chaos Gremlin</span>
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={async () => {
+                  try {
+                    await createScenario(runId, {
+                      title: `Uji Elemen: ${inspectedElement.selector}`,
+                      goal: `Uji interaksi, boundary, dan kestabilan komponen ${inspectedElement.selector} (${inspectedElement.text || inspectedElement.tagName})`,
+                      expect: [`Komponen ${inspectedElement.selector} merespons dengan benar`, 'Tidak ada 500 error'],
+                      risk: 'low',
+                      needsAuth: false,
+                    });
+                    setInspectedElement(null);
+                    onManualAction?.();
+                  } catch (err) {
+                    console.error('Failed to create scenario:', err);
+                  }
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer text-xs shadow-md"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Jadikan Skenario</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const prompt = `Focus exploratory chaos testing on element '${inspectedElement.selector}'`;
+                  handleSendGuidance(undefined, prompt);
+                }}
+                className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer text-xs shadow-md"
+              >
+                <Target className="w-4 h-4" />
+                <span>Target Element</span>
+              </button>
+            </div>
           </div>
         )}
 

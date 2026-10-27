@@ -29,6 +29,7 @@ import { useRunEvents } from '../../../lib/useRunEvents';
 import { LiveBrowserView } from '../../../components/LiveBrowserView';
 import { StepTimeline } from '../../../components/StepTimeline';
 import { FindingCard } from '../../../components/FindingCard';
+import { ScenarioPlanManager } from '../../../components/ScenarioPlanManager';
 
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -74,6 +75,8 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const steps = liveState.steps.length > 0 ? liveState.steps : initialData?.steps || [];
   const signals = liveState.signals.length > 0 ? liveState.signals : initialData?.signals || [];
   const findings = liveState.findings.length > 0 ? liveState.findings : initialData?.findings || [];
+  const scenarios = liveState.scenarios.length > 0 ? liveState.scenarios : initialData?.scenarios || [];
+  const coverage = initialData?.coverage;
 
   const isRunning = currentRun?.status === 'running' || currentRun?.status === 'queued';
   const isPaused = currentRun?.status === 'paused';
@@ -281,58 +284,14 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
               </div>
             </div>
 
-            {/* Strategic Reconnaissance Test Plan */}
-            {currentRun?.testPlan && (
-              <div className="bg-slate-900/90 border border-border rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Compass className="w-4 h-4 text-gremlin-400" />
-                    <h3 className="font-bold text-xs uppercase tracking-wider text-slate-200">
-                      Autonomous Reconnaissance Plan (Meta Muse Spark)
-                    </h3>
-                  </div>
-                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-gremlin-500/10 text-gremlin-400 border border-gremlin-500/20">
-                    STRATEGY FORMULATED
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                  {currentRun.testPlan.overview}
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                  {/* Exploration Phases */}
-                  <div className="bg-slate-950/70 rounded-lg p-3 border border-slate-800/80">
-                    <div className="text-[11px] font-semibold text-sky-400 mb-1.5 flex items-center gap-1.5">
-                      <span>🎯</span> Planned Phases
-                    </div>
-                    <ul className="space-y-1 text-xs text-slate-300 font-mono">
-                      {currentRun.testPlan.phases.map((phase: string, idx: number) => (
-                        <li key={idx} className="flex items-start gap-1.5 leading-snug">
-                          <span className="text-gremlin-400 font-bold">{idx + 1}.</span>
-                          <span>{phase}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* High Risk Areas */}
-                  <div className="bg-slate-950/70 rounded-lg p-3 border border-slate-800/80">
-                    <div className="text-[11px] font-semibold text-amber-400 mb-1.5 flex items-center gap-1.5">
-                      <span>⚠️</span> Target Risk Areas
-                    </div>
-                    <ul className="space-y-1 text-xs text-slate-300 font-mono">
-                      {currentRun.testPlan.riskAreas.map((risk: string, idx: number) => (
-                        <li key={idx} className="flex items-start gap-1.5 leading-snug">
-                          <span className="text-amber-400">•</span>
-                          <span>{risk}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Interactive Scenario Plan & Coverage Backbone */}
+            <ScenarioPlanManager
+              runId={runId}
+              scenarios={scenarios}
+              coverage={coverage}
+              runStatus={currentRun?.status || 'queued'}
+              onRefresh={fetchFullReport}
+            />
 
             {/* Sub-Navigation Tabs under the live screen */}
             <div className="flex border-b border-border gap-2">

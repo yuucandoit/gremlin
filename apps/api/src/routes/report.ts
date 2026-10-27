@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { getPersona } from '../agent/personas';
 import { findingsRepo } from '../db/repo/findings';
 import { runsRepo } from '../db/repo/runs';
+import { scenariosRepo } from '../db/repo/scenarios';
 import { signalsRepo } from '../db/repo/signals';
 import { stepsRepo } from '../db/repo/steps';
 import { storage } from '../lib/storage';
@@ -21,6 +22,8 @@ export const reportRoutes = new Elysia({ prefix: '/runs' }).get(
     const steps = stepsRepo.listByRunId(id);
     const signals = signalsRepo.listByRunId(id);
     const findings = findingsRepo.listByRunId(id);
+    const scenarios = scenariosRepo.listByRunId(id);
+    const coverage = scenariosRepo.getCoverage(id);
 
     // Read regression spec if generated
     let regressionSpec = '';
@@ -34,6 +37,8 @@ export const reportRoutes = new Elysia({ prefix: '/runs' }).get(
     const report: RunReport = {
       run,
       persona,
+      scenarios,
+      coverage,
       steps,
       signals,
       findings,
@@ -47,6 +52,7 @@ export const reportRoutes = new Elysia({ prefix: '/runs' }).get(
         highCount: findings.filter((f) => f.severity === 'HIGH').length,
         mediumCount: findings.filter((f) => f.severity === 'MEDIUM').length,
         lowCount: findings.filter((f) => f.severity === 'LOW').length,
+        visualCount: findings.filter((f) => f.category === 'visual').length,
       },
     };
 

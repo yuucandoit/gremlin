@@ -45,6 +45,7 @@ export class ReportBuilder {
         const finding = findingsRepo.create({
           id: crypto.randomUUID(),
           runId,
+          scenarioId: steps.find((s) => s.stepNumber === stepNum)?.scenarioId || null,
           title: item.title || 'Detected Anomaly',
           description: item.description || '',
           severity: (item.severity?.toUpperCase() || 'MEDIUM') as Severity,
@@ -104,6 +105,7 @@ export class ReportBuilder {
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
         runId,
+        scenarioId: steps.find((s) => s.stepNumber === stepNum)?.scenarioId || null,
         title: isCritical
           ? `Unhandled Client Exception: ${err.message.slice(0, 60)}`
           : `Console Error: ${err.message.slice(0, 60)}`,
@@ -124,12 +126,14 @@ export class ReportBuilder {
 
     // Synthesis: HTTP 500 Server Errors
     for (const srv of serverErrors) {
-      const reproSteps = this.buildReproSteps(steps, srv.stepNumber ?? 1);
+      const stepNum = srv.stepNumber ?? 1;
+      const reproSteps = this.buildReproSteps(steps, stepNum);
       const url = srv.data?.url || 'API endpoint';
 
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
         runId,
+        scenarioId: steps.find((s) => s.stepNumber === stepNum)?.scenarioId || null,
         title: `Backend HTTP 500 Internal Server Error on ${url.replace(/https?:\/\/[^/]+/, '')}`,
         description: `Server responded with status code 500 when requesting ${url}. This indicates unhandled backend logic failure or crash.`,
         severity: 'HIGH',
@@ -167,6 +171,7 @@ export class ReportBuilder {
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
         runId,
+        scenarioId: steps.find((s) => s.stepNumber === stepNum)?.scenarioId || null,
         title: `Unresponsive UI Element (Dead Click): ${selector}`,
         description: `User clicked on '${selector}', but the application produced no DOM mutations, no URL change, and no network requests. The control appears dead or non-functional.`,
         severity: 'MEDIUM',
@@ -185,11 +190,13 @@ export class ReportBuilder {
 
     // Synthesis: Network Errors
     for (const net of networkErrors) {
-      const reproSteps = this.buildReproSteps(steps, net.stepNumber ?? 1);
+      const stepNum = net.stepNumber ?? 1;
+      const reproSteps = this.buildReproSteps(steps, stepNum);
 
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
         runId,
+        scenarioId: steps.find((s) => s.stepNumber === stepNum)?.scenarioId || null,
         title: `Failed Network Request: ${net.message.slice(0, 60)}`,
         description: `Network request failed or was aborted: ${net.message}`,
         severity: 'MEDIUM',
@@ -197,7 +204,7 @@ export class ReportBuilder {
         reproductionSteps: reproSteps,
         suggestedFix:
           'Inspect CORS configuration, API endpoint availability, and request headers.',
-        firstDetectedStep: net.stepNumber ?? 1,
+        firstDetectedStep: stepNum,
         evidence: net.data,
       });
       findings.push(finding);
@@ -205,11 +212,13 @@ export class ReportBuilder {
 
     // Synthesis: Stuck Loop Trap
     for (const st of stuckLoops) {
-      const reproSteps = this.buildReproSteps(steps, st.stepNumber ?? 1);
+      const stepNum = st.stepNumber ?? 1;
+      const reproSteps = this.buildReproSteps(steps, stepNum);
 
       const finding = findingsRepo.create({
         id: crypto.randomUUID(),
         runId,
+        scenarioId: steps.find((s) => s.stepNumber === stepNum)?.scenarioId || null,
         title: `Navigation / Workflow Trap Detected`,
         description: st.message,
         severity: 'HIGH',

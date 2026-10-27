@@ -10,6 +10,8 @@ export interface ObservationData {
   maxSteps: number;
   screenshotPath?: string;
   userGuidance?: string;
+  scenarioGoal?: string;
+  scenarioExpect?: string[];
   interactiveElements: Array<{
     selector: string;
     tag: string;
@@ -144,6 +146,10 @@ export class LLMClient {
     const userMessage = `Current URL: ${obs.url}
 Page Title: ${obs.title}
 Step: ${obs.stepNumber} of ${obs.maxSteps}${
+      obs.scenarioGoal
+        ? `\n\n🎯 [ACTIVE TEST SCENARIO GOAL]: "${obs.scenarioGoal}"\nEXPECTED PASS CRITERIA: ${obs.scenarioExpect?.join('; ') || 'No crashes'}\nPrioritize testing this scenario goal directly!`
+        : ''
+    }${
       obs.userGuidance
         ? `\n\n🎯 [HUMAN CO-PILOT STEERING GUIDANCE]: The QA engineer explicitly commanded: "${obs.userGuidance}". Prioritize testing this instruction immediately.`
         : ''

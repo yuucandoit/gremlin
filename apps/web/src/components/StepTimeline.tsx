@@ -122,6 +122,11 @@ export function StepTimeline({ runId, steps, signals = [] }: StepTimelineProps) 
                         <span>👾</span> AI
                       </span>
                     )}
+                    {step.scenarioId && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-gremlin-400 bg-gremlin-500/10 border border-gremlin-500/20">
+                        🎯 Scenario
+                      </span>
+                    )}
                     {getActionBadge(step.action)}
                     {'selector' in step.action && (
                       <code className="text-xs text-sky-300 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/50 max-w-xs truncate">

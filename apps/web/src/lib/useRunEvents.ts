@@ -1,11 +1,12 @@
 'use client';
 
-import type { Finding, Run, RunEvent, Signal, Step } from '@gremlin/shared';
+import type { Finding, Run, RunEvent, Scenario, Signal, Step } from '@gremlin/shared';
 import { useEffect, useState } from 'react';
 import { API_BASE } from './api';
 
 export interface UseRunEventsState {
   run: Run | null;
+  scenarios: Scenario[];
   steps: Step[];
   signals: Signal[];
   findings: Finding[];
@@ -18,9 +19,10 @@ export interface UseRunEventsState {
   error?: string | null;
 }
 
-export function useRunEvents(runId: string, initialRun?: Run | null) {
+export function useRunEvents(runId: string, initialRun?: Run | null, initialScenarios?: Scenario[]) {
   const [state, setState] = useState<UseRunEventsState>({
     run: initialRun || null,
+    scenarios: initialScenarios || [],
     steps: [],
     signals: [],
     findings: [],
@@ -59,6 +61,55 @@ export function useRunEvents(runId: string, initialRun?: Run | null) {
                 ...prev,
                 run: runEvent.data.run,
                 isLive: true,
+              }));
+              break;
+            }
+
+            case 'run:planning': {
+              setState((prev) => ({
+                ...prev,
+                run: prev.run ? { ...prev.run, status: 'planning' } : prev.run,
+              }));
+              break;
+            }
+
+            case 'test_plan:ready': {
+              const testPlan = runEvent.data.testPlan;
+              const scenarios = runEvent.data.scenarios || testPlan?.scenarios || [];
+              setState((prev) => ({
+                ...prev,
+                run: prev.run ? { ...prev.run, testPlan } : prev.run,
+                scenarios: scenarios.length > 0 ? scenarios : prev.scenarios,
+              }));
+              break;
+            }
+
+            case 'scenario:created': {
+              const newScenario = runEvent.data.scenario;
+              setState((prev) => {
+                if (prev.scenarios.some((s) => s.id === newScenario.id)) return prev;
+                return {
+                  ...prev,
+                  scenarios: [...prev.scenarios, newScenario].sort((a, b) => a.idx - b.idx),
+                };
+              });
+              break;
+            }
+
+            case 'scenario:updated': {
+              const updated = runEvent.data.scenario;
+              setState((prev) => ({
+                ...prev,
+                scenarios: prev.scenarios.map((s) => (s.id === updated.id ? updated : s)),
+              }));
+              break;
+            }
+
+            case 'scenario:deleted': {
+              const deletedId = runEvent.data.scenarioId;
+              setState((prev) => ({
+                ...prev,
+                scenarios: prev.scenarios.filter((s) => s.id !== deletedId),
               }));
               break;
             }
@@ -160,6 +211,11 @@ export function useRunEvents(runId: string, initialRun?: Run | null) {
       // Listen to generic messages and typed events
       eventSource.onmessage = handleEvent;
       eventSource.addEventListener('run:started', handleEvent as EventListener);
+      eventSource.addEventListener('run:planning', handleEvent as EventListener);
+      eventSource.addEventListener('test_plan:ready', handleEvent as EventListener);
+      eventSource.addEventListener('scenario:created', handleEvent as EventListener);
+      eventSource.addEventListener('scenario:updated', handleEvent as EventListener);
+      eventSource.addEventListener('scenario:deleted', handleEvent as EventListener);
       eventSource.addEventListener('run:paused', handleEvent as EventListener);
       eventSource.addEventListener('run:resumed', handleEvent as EventListener);
       eventSource.addEventListener('run:progress', handleEvent as EventListener);

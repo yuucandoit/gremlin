@@ -12,6 +12,9 @@ export function runMigrations(): void {
     db.exec(`ALTER TABLE runs ADD COLUMN viewport TEXT DEFAULT 'desktop';`);
   } catch {}
   try {
+    db.exec(`ALTER TABLE runs ADD COLUMN auto_approve INTEGER DEFAULT 0;`);
+  } catch {}
+  try {
     db.exec(`ALTER TABLE runs ADD COLUMN test_plan_json TEXT;`);
   } catch {}
   try {
@@ -25,6 +28,12 @@ export function runMigrations(): void {
   } catch {}
   try {
     db.exec(`ALTER TABLE steps ADD COLUMN actor TEXT DEFAULT 'agent';`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE steps ADD COLUMN scenario_id TEXT;`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE findings ADD COLUMN scenario_id TEXT;`);
   } catch {}
 }
 

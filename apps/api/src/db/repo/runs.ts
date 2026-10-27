@@ -8,13 +8,14 @@ export interface CreateRunInput {
   viewport?: 'desktop' | 'mobile';
   maxSteps?: number;
   timeoutMs?: number;
+  autoApprove?: boolean;
 }
 
 export const runsRepo = {
   create(input: CreateRunInput): Run {
     const query = db.prepare(`
-      INSERT INTO runs (id, url, persona_id, viewport, status, max_steps, timeout_ms, current_step, total_signals, created_at, updated_at)
-      VALUES ($id, $url, $personaId, $viewport, 'queued', $maxSteps, $timeoutMs, 0, 0, datetime('now'), datetime('now'))
+      INSERT INTO runs (id, url, persona_id, viewport, status, auto_approve, max_steps, timeout_ms, current_step, total_signals, created_at, updated_at)
+      VALUES ($id, $url, $personaId, $viewport, 'queued', $autoApprove, $maxSteps, $timeoutMs, 0, 0, datetime('now'), datetime('now'))
     `);
 
     query.run({
@@ -22,6 +23,7 @@ export const runsRepo = {
       $url: input.url,
       $personaId: input.personaId,
       $viewport: input.viewport || 'desktop',
+      $autoApprove: input.autoApprove ? 1 : 0,
       $maxSteps: input.maxSteps ?? 20,
       $timeoutMs: input.timeoutMs ?? 60000,
     });
@@ -29,10 +31,10 @@ export const runsRepo = {
     return runsRepo.getById(input.id)!;
   },
 
-  getById(id: string): Run | null {
+  getById(id: string): (Run & { autoApprove?: boolean }) | null {
     const row = db
       .prepare(
-        `SELECT id, url, persona_id as personaId, viewport, status, max_steps as maxSteps, timeout_ms as timeoutMs,
+        `SELECT id, url, persona_id as personaId, viewport, status, auto_approve as autoApprove, max_steps as maxSteps, timeout_ms as timeoutMs,
                 current_step as currentStep, total_signals as totalSignals, test_plan_json as testPlanJson, error,
                 created_at as createdAt, updated_at as updatedAt, completed_at as completedAt
          FROM runs WHERE id = ?`
@@ -43,6 +45,7 @@ export const runsRepo = {
 
     return {
       ...row,
+      autoApprove: Boolean(row.autoApprove),
       testPlan: row.testPlanJson ? JSON.parse(row.testPlanJson) : undefined,
     };
   },
@@ -50,7 +53,7 @@ export const runsRepo = {
   list(limit = 50, offset = 0): Run[] {
     const rows = db
       .prepare(
-        `SELECT id, url, persona_id as personaId, viewport, status, max_steps as maxSteps, timeout_ms as timeoutMs,
+        `SELECT id, url, persona_id as personaId, viewport, status, auto_approve as autoApprove, max_steps as maxSteps, timeout_ms as timeoutMs,
                 current_step as currentStep, total_signals as totalSignals, test_plan_json as testPlanJson, error,
                 created_at as createdAt, updated_at as updatedAt, completed_at as completedAt
          FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?`

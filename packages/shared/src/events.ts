@@ -1,10 +1,14 @@
-import type { Finding, Run, Signal, Step, TestPlan } from './types';
+import type { Finding, Run, Scenario, Signal, Step, TestPlan } from './types';
 
 export type RunEventType =
   | 'run:started'
+  | 'run:planning'
   | 'run:paused'
   | 'run:resumed'
   | 'test_plan:ready'
+  | 'scenario:created'
+  | 'scenario:updated'
+  | 'scenario:deleted'
   | 'run:progress'
   | 'step:observed'
   | 'step:acted'
@@ -23,11 +27,19 @@ export interface BaseRunEvent<TType extends RunEventType, TPayload> {
 
 export type RunStartedEvent = BaseRunEvent<'run:started', { run: Run }>;
 
+export type RunPlanningEvent = BaseRunEvent<'run:planning', { runId: string; message?: string }>;
+
 export type RunPausedEvent = BaseRunEvent<'run:paused', { runId: string }>;
 
 export type RunResumedEvent = BaseRunEvent<'run:resumed', { runId: string }>;
 
-export type TestPlanReadyEvent = BaseRunEvent<'test_plan:ready', { testPlan: TestPlan }>;
+export type TestPlanReadyEvent = BaseRunEvent<'test_plan:ready', { testPlan: TestPlan; scenarios?: Scenario[] }>;
+
+export type ScenarioCreatedEvent = BaseRunEvent<'scenario:created', { scenario: Scenario }>;
+
+export type ScenarioUpdatedEvent = BaseRunEvent<'scenario:updated', { scenario: Scenario }>;
+
+export type ScenarioDeletedEvent = BaseRunEvent<'scenario:deleted', { scenarioId: string }>;
 
 export type RunProgressEvent = BaseRunEvent<
   'run:progress',
@@ -69,9 +81,13 @@ export type HeartbeatEvent = BaseRunEvent<'heartbeat', { count: number }>;
 
 export type RunEvent =
   | RunStartedEvent
+  | RunPlanningEvent
   | RunPausedEvent
   | RunResumedEvent
   | TestPlanReadyEvent
+  | ScenarioCreatedEvent
+  | ScenarioUpdatedEvent
+  | ScenarioDeletedEvent
   | RunProgressEvent
   | StepObservedEvent
   | StepActedEvent

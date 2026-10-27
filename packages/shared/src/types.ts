@@ -1,4 +1,4 @@
-export type RunStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type RunStatus = 'queued' | 'planning' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -25,11 +25,46 @@ export interface Persona {
   avatar?: string;
 }
 
+export type ScenarioStatus = 'pending' | 'running' | 'passed' | 'failed' | 'blocked' | 'skipped';
+export type ScenarioSource = 'ai' | 'user' | 'template' | 'recorded';
+export type ScenarioRisk = 'low' | 'medium' | 'high';
+
+export interface Scenario {
+  id: string;
+  runId: string;
+  idx: number;
+  title: string;
+  goal: string;
+  personaId?: string;
+  viewport?: 'desktop' | 'mobile';
+  needsAuth: boolean;
+  risk: ScenarioRisk;
+  maxSteps: number;
+  expect: string[];
+  source: ScenarioSource;
+  enabled: boolean;
+  status: ScenarioStatus;
+  verdict?: string | null;
+  createdAt: string;
+}
+
+export interface ScenarioCoverage {
+  total: number;
+  enabled: number;
+  passed: number;
+  failed: number;
+  blocked: number;
+  skipped: number;
+  pending: number;
+  percentage: number;
+}
+
 export interface TestPlan {
   overview: string;
   authDetected: boolean;
   phases: string[];
   riskAreas: string[];
+  scenarios?: Scenario[];
 }
 
 export interface VisualBoundingBox {
@@ -60,6 +95,7 @@ export interface Run {
 export interface Step {
   id: string;
   runId: string;
+  scenarioId?: string | null;
   stepNumber: number;
   actor?: 'agent' | 'human';
   action: import('./actions').AgentAction;
@@ -85,6 +121,7 @@ export interface Signal {
 export interface Finding {
   id: string;
   runId: string;
+  scenarioId?: string | null;
   title: string;
   description: string;
   severity: Severity;
@@ -102,6 +139,8 @@ export interface RunReport {
   run: Run;
   persona?: Persona;
   testPlan?: TestPlan | null;
+  scenarios?: Scenario[];
+  coverage?: ScenarioCoverage;
   steps: Step[];
   signals: Signal[];
   findings: Finding[];
@@ -126,6 +165,34 @@ export interface CreateRunRequest {
   maxSteps?: number;
   timeoutMs?: number;
   chaosMode?: boolean;
+  autoApprove?: boolean;
+}
+
+export interface CreateScenarioInput {
+  title: string;
+  goal: string;
+  personaId?: string;
+  viewport?: 'desktop' | 'mobile';
+  needsAuth?: boolean;
+  risk?: ScenarioRisk;
+  maxSteps?: number;
+  expect?: string[];
+  source?: ScenarioSource;
+  enabled?: boolean;
+}
+
+export interface UpdateScenarioInput {
+  title?: string;
+  goal?: string;
+  personaId?: string;
+  viewport?: 'desktop' | 'mobile';
+  needsAuth?: boolean;
+  risk?: ScenarioRisk;
+  maxSteps?: number;
+  expect?: string[];
+  enabled?: boolean;
+  status?: ScenarioStatus;
+  verdict?: string | null;
 }
 
 export interface InteractiveInputRequest {

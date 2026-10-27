@@ -47,6 +47,7 @@ export function RunForm() {
   const [maxSteps, setMaxSteps] = useState(15);
   const [chaosMode, setChaosMode] = useState(true);
   const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
+  const [autoApprove, setAutoApprove] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +63,7 @@ export function RunForm() {
         maxSteps,
         chaosMode,
         viewport,
+        autoApprove,
       });
 
       router.push(`/runs/${run.id}`);
@@ -212,6 +214,28 @@ export function RunForm() {
             <span>15 (Recommended)</span>
             <span>30 (Deep chaos)</span>
           </div>
+        </div>
+
+        {/* Interactive Planning Mode vs Auto-Approve */}
+        <div className="flex items-center justify-between self-center">
+          <div>
+            <div className="text-sm font-medium text-slate-200 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-gremlin-400" /> Tinjau Rencana Pengujian (Interactive Plan)
+            </div>
+            <p className="text-xs text-slate-400">
+              Reconnaissance menyusun skenario terlebih dahulu untuk Anda tinjau & edit sebelum eksekusi dimulai
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoApprove(!autoApprove)}
+            className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition ${
+              !autoApprove ? 'bg-gremlin-500 justify-end' : 'bg-slate-700 justify-start'
+            }`}
+            title={!autoApprove ? 'Review rencana aktif' : 'Auto-mulai tanpa jeda review'}
+          >
+            <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition" />
+          </button>
         </div>
 
         {/* Chaos Mode Toggle */}

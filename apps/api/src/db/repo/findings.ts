@@ -4,6 +4,7 @@ import { db } from '../client';
 export interface CreateFindingInput {
   id: string;
   runId: string;
+  scenarioId?: string | null;
   title: string;
   description: string;
   severity: Severity;
@@ -19,11 +20,12 @@ export interface CreateFindingInput {
 export const findingsRepo = {
   create(input: CreateFindingInput): Finding {
     db.prepare(`
-      INSERT INTO findings (id, run_id, title, description, severity, category, reproduction_steps_json, suggested_fix, first_detected_step, annotated_screenshot_path, visual_bbox_json, evidence_json, created_at)
-      VALUES ($id, $runId, $title, $description, $severity, $category, $reproductionStepsJson, $suggestedFix, $firstDetectedStep, $annotatedScreenshotPath, $visualBboxJson, $evidenceJson, datetime('now'))
+      INSERT INTO findings (id, run_id, scenario_id, title, description, severity, category, reproduction_steps_json, suggested_fix, first_detected_step, annotated_screenshot_path, visual_bbox_json, evidence_json, created_at)
+      VALUES ($id, $runId, $scenarioId, $title, $description, $severity, $category, $reproductionStepsJson, $suggestedFix, $firstDetectedStep, $annotatedScreenshotPath, $visualBboxJson, $evidenceJson, datetime('now'))
     `).run({
       $id: input.id,
       $runId: input.runId,
+      $scenarioId: input.scenarioId ?? null,
       $title: input.title,
       $description: input.description,
       $severity: input.severity,
@@ -42,7 +44,7 @@ export const findingsRepo = {
   getById(id: string): Finding | null {
     const row = db
       .prepare(
-        `SELECT id, run_id as runId, title, description, severity, category,
+        `SELECT id, run_id as runId, scenario_id as scenarioId, title, description, severity, category,
                 reproduction_steps_json as reproductionStepsJson, suggested_fix as suggestedFix,
                 first_detected_step as firstDetectedStep, annotated_screenshot_path as annotatedScreenshotPath,
                 visual_bbox_json as visualBboxJson, evidence_json as evidenceJson,
@@ -56,6 +58,7 @@ export const findingsRepo = {
     return {
       id: row.id,
       runId: row.runId,
+      scenarioId: row.scenarioId || null,
       title: row.title,
       description: row.description,
       severity: row.severity,
@@ -73,7 +76,7 @@ export const findingsRepo = {
   listByRunId(runId: string): Finding[] {
     const rows = db
       .prepare(
-        `SELECT id, run_id as runId, title, description, severity, category,
+        `SELECT id, run_id as runId, scenario_id as scenarioId, title, description, severity, category,
                 reproduction_steps_json as reproductionStepsJson, suggested_fix as suggestedFix,
                 first_detected_step as firstDetectedStep, annotated_screenshot_path as annotatedScreenshotPath,
                 visual_bbox_json as visualBboxJson, evidence_json as evidenceJson,
@@ -92,6 +95,7 @@ export const findingsRepo = {
     return rows.map((row) => ({
       id: row.id,
       runId: row.runId,
+      scenarioId: row.scenarioId || null,
       title: row.title,
       description: row.description,
       severity: row.severity,
