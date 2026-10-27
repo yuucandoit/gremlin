@@ -45,6 +45,17 @@ export async function cancelRun(id: string): Promise<void> {
   await fetch(`${API_BASE}/runs/${id}/cancel`, { method: 'POST' });
 }
 
+export async function deleteRun(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/runs/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete run');
+}
+
+export async function clearAllRuns(): Promise<{ count: number }> {
+  const res = await fetch(`${API_BASE}/runs`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to clear runs history');
+  return res.json();
+}
+
 export async function pauseRun(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/runs/${id}/pause`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to pause run');

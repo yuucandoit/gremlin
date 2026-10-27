@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -20,15 +21,17 @@ import {
   ShieldAlert,
   Sparkles,
   Terminal,
+  Trash2,
   XCircle,
 } from 'lucide-react';
-import { cancelRun, getRun, getRunReport, pauseRun, resumeRun } from '../../../lib/api';
+import { cancelRun, deleteRun, getRun, getRunReport, pauseRun, resumeRun } from '../../../lib/api';
 import { useRunEvents } from '../../../lib/useRunEvents';
 import { LiveBrowserView } from '../../../components/LiveBrowserView';
 import { StepTimeline } from '../../../components/StepTimeline';
 import { FindingCard } from '../../../components/FindingCard';
 
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const runId = resolvedParams.id;
 
@@ -36,6 +39,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [initialData, setInitialData] = useState<any>(null);
   const [specCode, setSpecCode] = useState<string>('');
   const [copiedSpec, setCopiedSpec] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Subscribe to live SSE events
   const liveState = useRunEvents(runId, initialData?.run);
@@ -113,6 +117,19 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to delete Run #${runId.slice(0, 8)} and all associated artifacts?`)) return;
+    try {
+      setDeleting(true);
+      await deleteRun(runId);
+      router.push('/runs');
+    } catch (err) {
+      console.error('Delete failed:', err);
+      alert('Failed to delete run.');
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header Navigation */}
@@ -162,20 +179,32 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
           </div>
         </div>
 
-        {isRunning && (
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-900/60 px-3 py-1 rounded-full">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              LIVE TELEMETRY ACTIVE
-            </span>
-            <button
-              onClick={handleCancel}
-              className="text-xs px-3 py-1 rounded-lg bg-rose-950/70 text-rose-300 border border-rose-900/70 hover:bg-rose-900 transition font-semibold"
-            >
-              Abort Run
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {isRunning && (
+            <>
+              <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-900/60 px-3 py-1 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                LIVE TELEMETRY ACTIVE
+              </span>
+              <button
+                onClick={handleCancel}
+                className="text-xs px-3 py-1 rounded-lg bg-rose-950/70 text-rose-300 border border-rose-900/70 hover:bg-rose-900 transition font-semibold cursor-pointer"
+              >
+                Abort Run
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-xs px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-rose-900 hover:text-rose-400 text-slate-400 transition font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title="Delete this run and its artifacts"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>{deleting ? 'Deleting...' : 'Delete'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Main 2-Column Split Layout */}

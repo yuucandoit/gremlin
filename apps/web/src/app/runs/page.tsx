@@ -3,12 +3,14 @@
 import type { Run } from '@gremlin/shared';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { listRuns } from '../../lib/api';
-import { ArrowUpRight, CheckCircle2, Clock, Flame, Play, RefreshCw, XCircle } from 'lucide-react';
+import { clearAllRuns, deleteRun, listRuns } from '../../lib/api';
+import { ArrowUpRight, CheckCircle2, Clock, Flame, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
 
 export default function RunsHistoryPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   const fetchRuns = async () => {
     try {
@@ -19,6 +21,38 @@ export default function RunsHistoryPage() {
       console.error('Failed fetching runs:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(`Delete test run #${id.slice(0, 8)} and all associated artifacts?`)) return;
+
+    try {
+      setDeletingId(id);
+      await deleteRun(id);
+      setRuns((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('Failed to delete run:', err);
+      alert('Failed to delete run.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm('Are you sure you want to delete ALL test runs history and artifacts? This cannot be undone.')) return;
+
+    try {
+      setClearing(true);
+      await clearAllRuns();
+      setRuns([]);
+    } catch (err) {
+      console.error('Failed to clear runs:', err);
+      alert('Failed to clear runs history.');
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -70,12 +104,24 @@ export default function RunsHistoryPage() {
             Browse all past and active AI testing sessions.
           </p>
         </div>
-        <button
-          onClick={fetchRuns}
-          className="px-3 py-2 rounded-lg bg-card border border-border hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {runs.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearing}
+              className="px-3 py-2 rounded-lg bg-rose-950/40 border border-rose-900/60 hover:bg-rose-900/60 text-rose-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{clearing ? 'Clearing...' : 'Clear All'}</span>
+            </button>
+          )}
+          <button
+            onClick={fetchRuns}
+            className="px-3 py-2 rounded-lg bg-card border border-border hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
       </div>
 
       {runs.length === 0 && !loading ? (
@@ -146,12 +192,22 @@ export default function RunsHistoryPage() {
                       })}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link
-                        href={`/runs/${run.id}`}
-                        className="inline-flex items-center gap-1 text-gremlin-400 hover:text-gremlin-300 font-semibold"
-                      >
-                        Inspect <ArrowUpRight className="w-3.5 h-3.5" />
-                      </Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/runs/${run.id}`}
+                          className="inline-flex items-center gap-1 text-gremlin-400 hover:text-gremlin-300 font-semibold"
+                        >
+                          Inspect <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Link>
+                        <button
+                          onClick={(e) => handleDelete(run.id, e)}
+                          disabled={deletingId === run.id}
+                          className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer disabled:opacity-40"
+                          title="Delete run & artifacts"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

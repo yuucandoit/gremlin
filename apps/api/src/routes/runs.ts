@@ -17,6 +17,13 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
     return runsRepo.list();
   })
 
+  // Delete all runs from history
+  .delete('/', () => {
+    const count = runsRepo.clearAll();
+    storage.clearAllRunsDir();
+    return { success: true, count, message: `Cleared ${count} run(s) from history.` };
+  })
+
   // Create a new run
   .post(
     '/',
@@ -74,6 +81,25 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
       signals,
       findings,
     };
+  })
+
+  // Delete a specific run and its artifacts
+  .delete('/:id', ({ params: { id }, set }) => {
+    const run = runsRepo.getById(id);
+    if (!run) {
+      set.status = 404;
+      return { error: 'Run not found' };
+    }
+
+    sessionManager.unregister(id);
+    if (run.status === 'running' || run.status === 'queued' || run.status === 'paused') {
+      runsRepo.updateStatus(id, 'cancelled');
+    }
+
+    const deleted = runsRepo.delete(id);
+    storage.deleteRunDir(id);
+
+    return { success: deleted, message: 'Run and associated artifacts deleted successfully' };
   })
 
   // Cancel an active run

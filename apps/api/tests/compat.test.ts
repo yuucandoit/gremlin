@@ -122,4 +122,42 @@ describe('Gremlin Compatibility & API Tests', () => {
     const specPath = storage.getRegressionSpecPath(runId);
     expect(specPath).toContain('regression.spec.ts');
   });
+
+  it('should delete a single run and cascade-delete its steps, signals, and artifact directory', async () => {
+    const runId = `test-delete-${Date.now()}`;
+    runsRepo.create({
+      id: runId,
+      url: 'http://localhost:3002',
+      personaId: 'gremlin',
+    });
+
+    stepsRepo.create({
+      id: crypto.randomUUID(),
+      runId,
+      stepNumber: 1,
+      actor: 'agent',
+      action: { type: 'navigate', url: 'http://localhost:3002' },
+      thought: 'Step to delete',
+      durationMs: 50,
+    });
+
+    // Create artifact file
+    storage.saveRegressionSpec(runId, '// test spec to delete');
+    const specPath = storage.getRegressionSpecPath(runId);
+    expect(storage.getRegressionSpecPath(runId)).toBeDefined();
+
+    // DELETE /runs/:id
+    const res = await app.handle(new Request(`http://localhost:3001/runs/${runId}`, { method: 'DELETE' }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // Verify DB deletion
+    expect(runsRepo.getById(runId)).toBeNull();
+    expect(stepsRepo.listByRunId(runId).length).toBe(0);
+
+    // Verify artifact directory removed
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(specPath)).toBe(false);
+  });
 });

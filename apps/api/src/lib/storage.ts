@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 function getWorkspaceRoot(): string {
@@ -64,5 +64,20 @@ export const storage = {
 
   getPublicArtifactUrl(runId: string, relativePath: string): string {
     return `/runs/${runId}/artifacts/${relativePath}`;
+  },
+
+  deleteRunDir(runId: string): void {
+    const dir = join(DATA_ROOT, 'runs', runId);
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+
+  clearAllRunsDir(): void {
+    const runsDir = join(DATA_ROOT, 'runs');
+    if (existsSync(runsDir)) {
+      rmSync(runsDir, { recursive: true, force: true });
+      mkdirSync(runsDir, { recursive: true });
+    }
   },
 };

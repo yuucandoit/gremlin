@@ -106,4 +106,14 @@ export const runsRepo = {
       $testPlanJson: JSON.stringify(testPlan),
     });
   },
+
+  delete(id: string): boolean {
+    const res = db.prepare('DELETE FROM runs WHERE id = ?').run(id);
+    return res.changes > 0;
+  },
+
+  clearAll(): number {
+    const res = db.prepare('DELETE FROM runs').run();
+    return res.changes;
+  },
 };
