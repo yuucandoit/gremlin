@@ -47,9 +47,10 @@ export async function conductReconnaissance(
   templateScenarios.push({
     title: 'Audit Visual Responsif & Layout Mobile/Desktop',
     goal: 'Verifikasi tidak ada teks bertumpuk, tombol terpotong, atau overflow kontras buruk pada viewport',
-    personaId: 'pixel-perfectionist',
+    personaId: 'gremlin',
     viewport: 'desktop',
     needsAuth: false,
+    authMode: 'none',
     risk: 'low',
     maxSteps: 6,
     expect: [
@@ -69,6 +70,7 @@ export async function conductReconnaissance(
     personaId: 'gremlin',
     viewport: 'desktop',
     needsAuth: false,
+    authMode: 'none',
     risk: 'low',
     maxSteps: 8,
     expect: [
@@ -89,6 +91,7 @@ export async function conductReconnaissance(
       personaId: 'skeptic',
       viewport: 'desktop',
       needsAuth: false,
+      authMode: 'none',
       risk: 'low',
       maxSteps: 8,
       expect: [
@@ -104,9 +107,10 @@ export async function conductReconnaissance(
     templateScenarios.push({
       title: 'Checkout Cepat & Idempotency Double-Click',
       goal: 'Klik tombol checkout atau Place Order dengan cepat dua kali untuk menguji race condition',
-      personaId: 'speed-demon',
+      personaId: 'speed_demon',
       viewport: 'desktop',
       needsAuth: false,
+      authMode: 'none',
       risk: 'low',
       maxSteps: 6,
       expect: [
@@ -125,6 +129,7 @@ export async function conductReconnaissance(
       personaId: 'skeptic',
       viewport: 'desktop',
       needsAuth: false,
+      authMode: 'none',
       risk: 'low',
       maxSteps: 6,
       expect: [
@@ -143,6 +148,7 @@ export async function conductReconnaissance(
       personaId: 'gremlin',
       viewport: 'desktop',
       needsAuth: false,
+      authMode: 'none',
       risk: 'high',
       maxSteps: 8,
       expect: [
@@ -163,6 +169,7 @@ export async function conductReconnaissance(
       personaId: 'skeptic',
       viewport: 'desktop',
       needsAuth: false,
+      authMode: 'tests_login',
       risk: 'low',
       maxSteps: 6,
       expect: [
@@ -180,6 +187,7 @@ export async function conductReconnaissance(
       personaId: 'gremlin',
       viewport: 'desktop',
       needsAuth: true,
+      authMode: 'requires',
       risk: 'medium',
       maxSteps: 6,
       expect: [
@@ -281,7 +289,8 @@ Return raw JSON only.`;
     goal: ts.goal,
     personaId: ts.personaId || 'gremlin',
     viewport: ts.viewport || 'desktop',
-    needsAuth: ts.needsAuth,
+    needsAuth: ts.authMode === 'requires' || !!ts.needsAuth,
+    authMode: ts.authMode || (ts.needsAuth ? 'requires' : 'none'),
     risk: ts.risk,
     maxSteps: ts.maxSteps,
     expect: ts.expect,
@@ -329,12 +338,20 @@ export async function parseScenarioFromPrompt(
 
   let personaId = 'gremlin';
   if (lower.includes('cepat') || lower.includes('double') || lower.includes('spam')) {
-    personaId = 'speed-demon';
+    personaId = 'speed_demon';
   } else if (lower.includes('kupon') || lower.includes('diskon') || lower.includes('kosong') || lower.includes('negatif')) {
     personaId = 'skeptic';
-  } else if (lower.includes('warna') || lower.includes('kontras') || lower.includes('teks') || lower.includes('layar')) {
-    personaId = 'pixel-perfectionist';
+  } else if (lower.includes('keyboard') || lower.includes('tab') || lower.includes('aksesibilitas')) {
+    personaId = 'keyboard_navigator';
+  } else if (lower.includes('shop') || lower.includes('beli') || lower.includes('belanja')) {
+    personaId = 'shopper';
   }
+
+  const isTestingLoginForm =
+    (lower.includes('login') || lower.includes('masuk')) &&
+    (lower.includes('salah') || lower.includes('invalid') || lower.includes('fuzz') || lower.includes('leak') || lower.includes('enumerasi'));
+
+  const authMode = isTestingLoginForm ? 'tests_login' : needsAuth ? 'requires' : 'none';
 
   let parsed = {
     title: trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed,
@@ -388,6 +405,7 @@ Return JSON only:
     personaId: parsed.personaId,
     viewport: 'desktop',
     needsAuth: parsed.needsAuth,
+    authMode: authMode,
     risk: parsed.risk,
     maxSteps: parsed.maxSteps,
     expect: parsed.expect,

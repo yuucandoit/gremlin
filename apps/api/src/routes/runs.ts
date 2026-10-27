@@ -49,6 +49,14 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
         autoApprove: autoApprove ?? false,
       });
 
+      if ((body as any).auth?.username) {
+        sessionManager.setCredentials(id, {
+          username: (body as any).auth.username,
+          password: (body as any).auth.password || '',
+          loginUrl: (body as any).auth.loginUrl,
+        });
+      }
+
       // Enqueue the run for background execution
       runQueue.enqueue(id);
 
@@ -119,10 +127,7 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
       return { error: 'Run not found' };
     }
 
-    if (run.status === 'running' || run.status === 'queued') {
-      runsRepo.updateStatus(id, 'cancelled');
-    }
-
+    sessionManager.cancel(id);
     return { success: true, message: 'Run cancelled' };
   })
 

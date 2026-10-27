@@ -25,9 +25,16 @@ export interface Persona {
   avatar?: string;
 }
 
-export type ScenarioStatus = 'pending' | 'running' | 'passed' | 'failed' | 'blocked' | 'skipped';
+export type ScenarioStatus = 'pending' | 'running' | 'passed' | 'failed' | 'inconclusive' | 'blocked' | 'skipped';
 export type ScenarioSource = 'ai' | 'user' | 'template' | 'recorded';
 export type ScenarioRisk = 'low' | 'medium' | 'high';
+export type AuthMode = 'none' | 'requires' | 'tests_login';
+
+export interface VerdictCheck {
+  criterion: string;
+  result: 'met' | 'violated' | 'unknown';
+  evidence?: string;
+}
 
 export interface Scenario {
   id: string;
@@ -38,6 +45,7 @@ export interface Scenario {
   personaId?: string;
   viewport?: 'desktop' | 'mobile';
   needsAuth: boolean;
+  authMode: AuthMode;
   risk: ScenarioRisk;
   maxSteps: number;
   expect: string[];
@@ -45,6 +53,7 @@ export interface Scenario {
   enabled: boolean;
   status: ScenarioStatus;
   verdict?: string | null;
+  checks?: VerdictCheck[];
   createdAt: string;
 }
 
@@ -53,6 +62,7 @@ export interface ScenarioCoverage {
   enabled: number;
   passed: number;
   failed: number;
+  inconclusive: number;
   blocked: number;
   skipped: number;
   pending: number;
@@ -166,6 +176,11 @@ export interface CreateRunRequest {
   timeoutMs?: number;
   chaosMode?: boolean;
   autoApprove?: boolean;
+  auth?: {
+    loginUrl?: string;
+    username: string;
+    password: string;
+  };
 }
 
 export interface CreateScenarioInput {
@@ -174,6 +189,7 @@ export interface CreateScenarioInput {
   personaId?: string;
   viewport?: 'desktop' | 'mobile';
   needsAuth?: boolean;
+  authMode?: AuthMode;
   risk?: ScenarioRisk;
   maxSteps?: number;
   expect?: string[];
@@ -187,12 +203,14 @@ export interface UpdateScenarioInput {
   personaId?: string;
   viewport?: 'desktop' | 'mobile';
   needsAuth?: boolean;
+  authMode?: AuthMode;
   risk?: ScenarioRisk;
   maxSteps?: number;
   expect?: string[];
   enabled?: boolean;
   status?: ScenarioStatus;
   verdict?: string | null;
+  checks?: VerdictCheck[];
 }
 
 export interface InteractiveInputRequest {

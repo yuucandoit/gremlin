@@ -35,6 +35,15 @@ export function runMigrations(): void {
   try {
     db.exec(`ALTER TABLE findings ADD COLUMN scenario_id TEXT;`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE scenarios ADD COLUMN auth_mode TEXT DEFAULT 'none';`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE scenarios ADD COLUMN checks_json TEXT;`);
+  } catch {}
+  try {
+    db.exec(`UPDATE scenarios SET auth_mode = 'requires' WHERE needs_auth = 1 AND (auth_mode IS NULL OR auth_mode = 'none');`);
+  } catch {}
 }
 
 // Auto-run when executed directly

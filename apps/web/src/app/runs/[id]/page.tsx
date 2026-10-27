@@ -239,6 +239,77 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
+      {/* QA Pipeline Stage Stepper */}
+      <div className="bg-card/70 border border-border rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+        {[
+          {
+            id: 'recon',
+            label: '1. Reconnaissance',
+            desc: 'AI crawl & route discovery',
+            status: scenarios.length > 0 ? 'done' : isRunning ? 'active' : 'pending',
+          },
+          {
+            id: 'plan',
+            label: '2. Rencana Skenario',
+            desc: `${scenarios.length} skenario terstruktur`,
+            status: currentRun?.status === 'planning' ? 'active' : scenarios.length > 0 ? 'done' : 'pending',
+          },
+          {
+            id: 'auth',
+            label: '3. Autentikasi Akun',
+            desc: liveState.authPrompt ? 'Perlu tindakan' : 'Sesi tersimpan / Guest',
+            status: liveState.authPrompt || showAuthModal ? 'active' : 'done',
+          },
+          {
+            id: 'exec',
+            label: '4. Eksekusi Skenario',
+            desc: isRunning
+              ? `Langkah ${currentRun?.currentStep || 0}/${currentRun?.maxSteps || 0}`
+              : currentRun?.status === 'completed'
+              ? 'Selesai'
+              : 'Siap',
+            status: isRunning ? 'active' : currentRun?.status === 'completed' ? 'done' : 'pending',
+          },
+          {
+            id: 'report',
+            label: '5. Laporan & Regresi',
+            desc: currentRun?.status === 'completed' ? `${findings.length} temuan defect` : 'Menunggu hasil',
+            status: currentRun?.status === 'completed' ? 'done' : 'pending',
+          },
+        ].map((stage, idx, arr) => (
+          <div key={stage.id} className="flex items-center gap-2.5 flex-1 min-w-[150px]">
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                stage.status === 'done'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : stage.status === 'active'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 animate-pulse ring-2 ring-amber-500/20'
+                  : 'bg-slate-800 text-slate-500 border border-slate-700'
+              }`}
+            >
+              {stage.status === 'done' ? '✓' : idx + 1}
+            </div>
+            <div className="min-w-0">
+              <div
+                className={`font-semibold text-xs truncate ${
+                  stage.status === 'active'
+                    ? 'text-amber-300'
+                    : stage.status === 'done'
+                    ? 'text-slate-200'
+                    : 'text-slate-500'
+                }`}
+              >
+                {stage.label}
+              </div>
+              <div className="text-[10px] text-slate-400 truncate">{stage.desc}</div>
+            </div>
+            {idx < arr.length - 1 && (
+              <div className="hidden xl:block text-slate-700 ml-auto mr-1">›</div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {/* Main 2-Column Split Layout */}
       {/* Kiri/Tengah: Layar Live Chromium + Card Bawah */}
       {/* Kanan: List Step dan Menu */}

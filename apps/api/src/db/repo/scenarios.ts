@@ -1,16 +1,17 @@
-import type { Scenario, ScenarioCoverage, ScenarioStatus } from '@gremlin/shared';
+import type { Scenario, ScenarioCoverage, ScenarioStatus, VerdictCheck } from '@gremlin/shared';
 import { db } from '../client';
 
 export const scenariosRepo = {
   create(scenario: Scenario): Scenario {
+    const authMode = scenario.authMode || (scenario.needsAuth ? 'requires' : 'none');
     db.prepare(`
       INSERT INTO scenarios (
-        id, run_id, idx, title, goal, persona_id, viewport, needs_auth,
-        risk, max_steps, expect_json, source, enabled, status, verdict, created_at
+        id, run_id, idx, title, goal, persona_id, viewport, needs_auth, auth_mode,
+        risk, max_steps, expect_json, source, enabled, status, verdict, checks_json, created_at
       )
       VALUES (
-        $id, $runId, $idx, $title, $goal, $personaId, $viewport, $needsAuth,
-        $risk, $maxSteps, $expectJson, $source, $enabled, $status, $verdict, datetime('now')
+        $id, $runId, $idx, $title, $goal, $personaId, $viewport, $needsAuth, $authMode,
+        $risk, $maxSteps, $expectJson, $source, $enabled, $status, $verdict, $checksJson, datetime('now')
       )
     `).run({
       $id: scenario.id,
@@ -20,7 +21,8 @@ export const scenariosRepo = {
       $goal: scenario.goal,
       $personaId: scenario.personaId || 'gremlin',
       $viewport: scenario.viewport || 'desktop',
-      $needsAuth: scenario.needsAuth ? 1 : 0,
+      $needsAuth: authMode === 'requires' ? 1 : 0,
+      $authMode: authMode,
       $risk: scenario.risk || 'low',
       $maxSteps: scenario.maxSteps || 8,
       $expectJson: JSON.stringify(scenario.expect || []),
@@ -28,6 +30,7 @@ export const scenariosRepo = {
       $enabled: scenario.enabled ? 1 : 0,
       $status: scenario.status || 'pending',
       $verdict: scenario.verdict ?? null,
+      $checksJson: JSON.stringify(scenario.checks || []),
     });
 
     return scenariosRepo.getById(scenario.id)!;
@@ -36,17 +39,18 @@ export const scenariosRepo = {
   bulkCreate(scenarios: Scenario[]): Scenario[] {
     const insert = db.prepare(`
       INSERT INTO scenarios (
-        id, run_id, idx, title, goal, persona_id, viewport, needs_auth,
-        risk, max_steps, expect_json, source, enabled, status, verdict, created_at
+        id, run_id, idx, title, goal, persona_id, viewport, needs_auth, auth_mode,
+        risk, max_steps, expect_json, source, enabled, status, verdict, checks_json, created_at
       )
       VALUES (
-        $id, $runId, $idx, $title, $goal, $personaId, $viewport, $needsAuth,
-        $risk, $maxSteps, $expectJson, $source, $enabled, $status, $verdict, datetime('now')
+        $id, $runId, $idx, $title, $goal, $personaId, $viewport, $needsAuth, $authMode,
+        $risk, $maxSteps, $expectJson, $source, $enabled, $status, $verdict, $checksJson, datetime('now')
       )
     `);
 
     db.transaction(() => {
       for (const s of scenarios) {
+        const authMode = s.authMode || (s.needsAuth ? 'requires' : 'none');
         insert.run({
           $id: s.id,
           $runId: s.runId,
@@ -55,7 +59,8 @@ export const scenariosRepo = {
           $goal: s.goal,
           $personaId: s.personaId || 'gremlin',
           $viewport: s.viewport || 'desktop',
-          $needsAuth: s.needsAuth ? 1 : 0,
+          $needsAuth: authMode === 'requires' ? 1 : 0,
+          $authMode: authMode,
           $risk: s.risk || 'low',
           $maxSteps: s.maxSteps || 8,
           $expectJson: JSON.stringify(s.expect || []),
@@ -63,6 +68,7 @@ export const scenariosRepo = {
           $enabled: s.enabled ? 1 : 0,
           $status: s.status || 'pending',
           $verdict: s.verdict ?? null,
+          $checksJson: JSON.stringify(s.checks || []),
         });
       }
     })();
@@ -74,8 +80,8 @@ export const scenariosRepo = {
     const row = db
       .prepare(
         `SELECT id, run_id as runId, idx, title, goal, persona_id as personaId,
-                viewport, needs_auth as needsAuth, risk, max_steps as maxSteps,
-                expect_json as expectJson, source, enabled, status, verdict,
+                viewport, needs_auth as needsAuth, auth_mode as authMode, risk, max_steps as maxSteps,
+                expect_json as expectJson, source, enabled, status, verdict, checks_json as checksJson,
                 created_at as createdAt
          FROM scenarios WHERE id = ?`
       )
@@ -83,6 +89,7 @@ export const scenariosRepo = {
 
     if (!row) return null;
 
+    const authMode = (row.authMode as any) || (row.needsAuth ? 'requires' : 'none');
     return {
       id: row.id,
       runId: row.runId,
@@ -91,7 +98,8 @@ export const scenariosRepo = {
       goal: row.goal,
       personaId: row.personaId,
       viewport: row.viewport,
-      needsAuth: Boolean(row.needsAuth),
+      needsAuth: authMode === 'requires',
+      authMode,
       risk: row.risk,
       maxSteps: row.maxSteps,
       expect: JSON.parse(row.expectJson || '[]'),
@@ -99,6 +107,7 @@ export const scenariosRepo = {
       enabled: Boolean(row.enabled),
       status: row.status,
       verdict: row.verdict,
+      checks: JSON.parse(row.checksJson || '[]'),
       createdAt: row.createdAt,
     };
   },
@@ -107,31 +116,36 @@ export const scenariosRepo = {
     const rows = db
       .prepare(
         `SELECT id, run_id as runId, idx, title, goal, persona_id as personaId,
-                viewport, needs_auth as needsAuth, risk, max_steps as maxSteps,
-                expect_json as expectJson, source, enabled, status, verdict,
+                viewport, needs_auth as needsAuth, auth_mode as authMode, risk, max_steps as maxSteps,
+                expect_json as expectJson, source, enabled, status, verdict, checks_json as checksJson,
                 created_at as createdAt
          FROM scenarios WHERE run_id = ? ORDER BY idx ASC`
       )
       .all(runId) as any[];
 
-    return rows.map((row) => ({
-      id: row.id,
-      runId: row.runId,
-      idx: row.idx,
-      title: row.title,
-      goal: row.goal,
-      personaId: row.personaId,
-      viewport: row.viewport,
-      needsAuth: Boolean(row.needsAuth),
-      risk: row.risk,
-      maxSteps: row.maxSteps,
-      expect: JSON.parse(row.expectJson || '[]'),
-      source: row.source,
-      enabled: Boolean(row.enabled),
-      status: row.status,
-      verdict: row.verdict,
-      createdAt: row.createdAt,
-    }));
+    return rows.map((row) => {
+      const authMode = (row.authMode as any) || (row.needsAuth ? 'requires' : 'none');
+      return {
+        id: row.id,
+        runId: row.runId,
+        idx: row.idx,
+        title: row.title,
+        goal: row.goal,
+        personaId: row.personaId,
+        viewport: row.viewport,
+        needsAuth: authMode === 'requires',
+        authMode,
+        risk: row.risk,
+        maxSteps: row.maxSteps,
+        expect: JSON.parse(row.expectJson || '[]'),
+        source: row.source,
+        enabled: Boolean(row.enabled),
+        status: row.status,
+        verdict: row.verdict,
+        checks: JSON.parse(row.checksJson || '[]'),
+        createdAt: row.createdAt,
+      };
+    });
   },
 
   update(id: string, partial: Partial<Scenario>): Scenario | null {
@@ -142,6 +156,8 @@ export const scenariosRepo = {
       ...current,
       ...partial,
       expect: partial.expect !== undefined ? partial.expect : current.expect,
+      checks: partial.checks !== undefined ? partial.checks : current.checks,
+      authMode: partial.authMode || (partial.needsAuth ? 'requires' : current.authMode),
     };
 
     db.prepare(`
@@ -151,12 +167,14 @@ export const scenariosRepo = {
           persona_id = $personaId,
           viewport = $viewport,
           needs_auth = $needsAuth,
+          auth_mode = $authMode,
           risk = $risk,
           max_steps = $maxSteps,
           expect_json = $expectJson,
           enabled = $enabled,
           status = $status,
-          verdict = $verdict
+          verdict = $verdict,
+          checks_json = $checksJson
       WHERE id = $id
     `).run({
       $id: id,
@@ -164,29 +182,51 @@ export const scenariosRepo = {
       $goal: updated.goal,
       $personaId: updated.personaId || 'gremlin',
       $viewport: updated.viewport || 'desktop',
-      $needsAuth: updated.needsAuth ? 1 : 0,
+      $needsAuth: updated.authMode === 'requires' ? 1 : 0,
+      $authMode: updated.authMode,
       $risk: updated.risk,
       $maxSteps: updated.maxSteps,
       $expectJson: JSON.stringify(updated.expect),
       $enabled: updated.enabled ? 1 : 0,
       $status: updated.status,
       $verdict: updated.verdict ?? null,
+      $checksJson: JSON.stringify(updated.checks || []),
     });
 
     return scenariosRepo.getById(id);
   },
 
-  updateStatus(id: string, status: ScenarioStatus, verdict?: string | null): Scenario | null {
-    db.prepare(`
-      UPDATE scenarios
-      SET status = $status,
-          verdict = $verdict
-      WHERE id = $id
-    `).run({
-      $id: id,
-      $status: status,
-      $verdict: verdict !== undefined ? verdict : null,
-    });
+  updateStatus(
+    id: string,
+    status: ScenarioStatus,
+    verdict?: string | null,
+    checks?: VerdictCheck[]
+  ): Scenario | null {
+    if (checks !== undefined) {
+      db.prepare(`
+        UPDATE scenarios
+        SET status = $status,
+            verdict = $verdict,
+            checks_json = $checksJson
+        WHERE id = $id
+      `).run({
+        $id: id,
+        $status: status,
+        $verdict: verdict !== undefined ? verdict : null,
+        $checksJson: JSON.stringify(checks),
+      });
+    } else {
+      db.prepare(`
+        UPDATE scenarios
+        SET status = $status,
+            verdict = $verdict
+        WHERE id = $id
+      `).run({
+        $id: id,
+        $status: status,
+        $verdict: verdict !== undefined ? verdict : null,
+      });
+    }
 
     return scenariosRepo.getById(id);
   },
@@ -211,10 +251,10 @@ export const scenariosRepo = {
     db.prepare(`
       UPDATE scenarios
       SET status = 'pending', verdict = null
-      WHERE run_id = ? AND needs_auth = 1 AND status = 'blocked'
+      WHERE run_id = ? AND (auth_mode = 'requires' OR needs_auth = 1) AND status = 'blocked'
     `).run(runId);
 
-    return scenariosRepo.listByRunId(runId).filter((s) => s.needsAuth);
+    return scenariosRepo.listByRunId(runId).filter((s) => s.authMode === 'requires' || s.needsAuth);
   },
 
   getCoverage(runId: string): ScenarioCoverage {
@@ -223,11 +263,12 @@ export const scenariosRepo = {
     const enabled = scenarios.filter((s) => s.enabled).length;
     const passed = scenarios.filter((s) => s.status === 'passed').length;
     const failed = scenarios.filter((s) => s.status === 'failed').length;
+    const inconclusive = scenarios.filter((s) => s.status === 'inconclusive').length;
     const blocked = scenarios.filter((s) => s.status === 'blocked').length;
     const skipped = scenarios.filter((s) => s.status === 'skipped').length;
     const pending = scenarios.filter((s) => s.status === 'pending').length;
 
-    const evaluated = passed + failed + blocked;
+    const evaluated = passed + failed + inconclusive + blocked;
     const percentage = enabled > 0 ? Math.round((evaluated / enabled) * 100) : 0;
 
     return {
@@ -235,6 +276,7 @@ export const scenariosRepo = {
       enabled,
       passed,
       failed,
+      inconclusive,
       blocked,
       skipped,
       pending,
@@ -242,4 +284,5 @@ export const scenariosRepo = {
     };
   },
 };
+
 

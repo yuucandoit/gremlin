@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { createRun } from '../lib/api';
-import { ArrowRight, Bot, Flame, Monitor, Play, Settings2, Smartphone, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, ChevronDown, ChevronUp, Flame, KeyRound, Monitor, Play, Settings2, Smartphone, Sparkles } from 'lucide-react';
 
 const PRESET_PERSONAS = [
   {
@@ -48,6 +48,10 @@ export function RunForm() {
   const [chaosMode, setChaosMode] = useState(true);
   const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
   const [autoApprove, setAutoApprove] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authLoginUrl, setAuthLoginUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +68,13 @@ export function RunForm() {
         chaosMode,
         viewport,
         autoApprove,
+        auth: authUsername
+          ? {
+              username: authUsername,
+              password: authPassword,
+              loginUrl: authLoginUrl || undefined,
+            }
+          : undefined,
       });
 
       router.push(`/runs/${run.id}`);
@@ -258,6 +269,90 @@ export function RunForm() {
             <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition" />
           </button>
         </div>
+      </div>
+
+      {/* Upfront Auth / Credentials Collapsible (Optional) */}
+      <div className="rounded-xl border border-border bg-card/60 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowAuth(!showAuth)}
+          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-800/40 transition cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                Akun Uji / Autentikasi Awal
+                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                  Opsional
+                </span>
+              </div>
+              <div className="text-xs text-slate-400">
+                Otomatis login sebelum uji skenario atau saat menemukan login wall (tidak wajib)
+              </div>
+            </div>
+          </div>
+          {showAuth ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+
+        {showAuth && (
+          <div className="p-4 pt-0 space-y-4 border-t border-border/50">
+            {url.includes('3002') && (
+              <div className="pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthUsername('admin@glitchmart.com');
+                    setAuthPassword('SuperSecret123!');
+                    setAuthLoginUrl('http://localhost:3002/login');
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 transition flex items-center gap-1.5 font-medium"
+                >
+                  ⚡ Gunakan Akun Demo GlitchMart (admin@glitchmart.com)
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-300">Username atau Email</label>
+                <input
+                  type="text"
+                  value={authUsername}
+                  onChange={(e) => setAuthUsername(e.target.value)}
+                  placeholder="e.g. tester@example.com"
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-background border border-border focus:border-amber-400 focus:outline-none text-slate-100 placeholder:text-slate-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-300">Password</label>
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-background border border-border focus:border-amber-400 focus:outline-none text-slate-100 placeholder:text-slate-500 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-300">Halaman Login (Opsional)</label>
+              <input
+                type="text"
+                value={authLoginUrl}
+                onChange={(e) => setAuthLoginUrl(e.target.value)}
+                placeholder="e.g. http://localhost:3002/login"
+                className="w-full px-3 py-2 text-sm rounded-lg bg-background border border-border focus:border-amber-400 focus:outline-none text-slate-100 placeholder:text-slate-500"
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400 flex items-center gap-1">
+              🔒 <span className="italic">Kredensial disimpan hanya di memori sesi aktif browser & tidak pernah disimpan ke database atau dicatat di timeline publik.</span>
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Submit Button */}

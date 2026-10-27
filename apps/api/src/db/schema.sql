@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
   persona_id TEXT DEFAULT 'gremlin',
   viewport TEXT DEFAULT 'desktop',
   needs_auth INTEGER NOT NULL DEFAULT 0,
+  auth_mode TEXT NOT NULL DEFAULT 'none',
   risk TEXT NOT NULL DEFAULT 'low',
   max_steps INTEGER NOT NULL DEFAULT 8,
   expect_json TEXT NOT NULL DEFAULT '[]',
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
   enabled INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'pending',
   verdict TEXT,
+  checks_json TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );

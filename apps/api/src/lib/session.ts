@@ -1,6 +1,7 @@
 import type { InspectElementResult, InteractiveInputRequest, Step } from '@gremlin/shared';
 import type { BrowserContext, Page } from 'playwright';
 import { existsSync } from 'node:fs';
+import { isLoggedIn } from '../agent/auth';
 import { runsRepo } from '../db/repo/runs';
 import { scenariosRepo } from '../db/repo/scenarios';
 import { stepsRepo } from '../db/repo/steps';
@@ -21,6 +22,7 @@ export interface ActiveSession {
   authDismissed: boolean;
   authPromise: Promise<void> | null;
   authResolver: (() => void) | null;
+  authTimeoutTimer?: any;
   authInfo?: {
     url: string;
     emailSelector?: string;
@@ -31,12 +33,20 @@ export interface ActiveSession {
   currentScenarioId?: string | null;
   userInstruction?: string | null;
   targetSelector?: string | null;
+  cancelled: boolean;
+  credentials?: { username: string; password: string; loginUrl?: string } | null;
 }
 
 class SessionManager {
   private sessions = new Map<string, ActiveSession>();
 
-  register(runId: string, page: Page, context: BrowserContext, autoApprove: boolean = false): void {
+  register(
+    runId: string,
+    page: Page,
+    context: BrowserContext,
+    autoApprove: boolean = false,
+    credentials?: { username: string; password: string; loginUrl?: string } | null
+  ): void {
     this.sessions.set(runId, {
       runId,
       page,
@@ -51,10 +61,13 @@ class SessionManager {
       authDismissed: false,
       authPromise: null,
       authResolver: null,
+      authTimeoutTimer: null,
       authInfo: null,
       currentScenarioId: null,
       userInstruction: null,
       targetSelector: null,
+      cancelled: false,
+      credentials: credentials || null,
     });
   }
 
@@ -69,7 +82,60 @@ class SessionManager {
     if (session?.authResolver) {
       session.authResolver();
     }
+    if (session?.authTimeoutTimer) {
+      clearTimeout(session.authTimeoutTimer);
+      session.authTimeoutTimer = null;
+    }
     this.sessions.delete(runId);
+  }
+
+  cancel(runId: string): boolean {
+    const session = this.sessions.get(runId);
+    if (session) {
+      session.cancelled = true;
+      if (session.resumeResolver) {
+        session.resumeResolver();
+        session.resumeResolver = null;
+      }
+      if (session.approvalResolver) {
+        session.approvalResolver();
+        session.approvalResolver = null;
+      }
+      if (session.authResolver) {
+        session.authResolver();
+        session.authResolver = null;
+      }
+      if (session.authTimeoutTimer) {
+        clearTimeout(session.authTimeoutTimer);
+        session.authTimeoutTimer = null;
+      }
+    }
+    runsRepo.updateStatus(runId, 'cancelled');
+    eventBus.emitRunEvent({
+      type: 'run:cancelled',
+      runId,
+      timestamp: new Date().toISOString(),
+      data: { runId },
+    });
+    return true;
+  }
+
+  isCancelled(runId: string): boolean {
+    const session = this.sessions.get(runId);
+    if (session?.cancelled) return true;
+    const run = runsRepo.getById(runId);
+    return run?.status === 'cancelled';
+  }
+
+  setCredentials(runId: string, creds: { username: string; password: string; loginUrl?: string }): void {
+    const session = this.sessions.get(runId);
+    if (session) {
+      session.credentials = creds;
+    }
+  }
+
+  getCredentials(runId: string): { username: string; password: string; loginUrl?: string } | null {
+    return this.sessions.get(runId)?.credentials || null;
   }
 
   getSession(runId: string): ActiveSession | undefined {
@@ -144,13 +210,22 @@ class SessionManager {
       passwordSelector?: string;
       submitSelector?: string;
       message?: string;
-    }
+    },
+    timeoutMs: number = 90000
   ): void {
     const session = this.sessions.get(runId);
     if (!session || session.authDismissed) return;
 
     session.authRequired = true;
     session.authInfo = info;
+
+    if (session.authTimeoutTimer) {
+      clearTimeout(session.authTimeoutTimer);
+    }
+    session.authTimeoutTimer = setTimeout(() => {
+      console.log(`[SessionManager] Auth prompt timed out after ${timeoutMs}ms for run ${runId}`);
+      this.dismissAuth(runId);
+    }, timeoutMs);
 
     if (!session.authPromise) {
       session.authPromise = new Promise<void>((resolve) => {
@@ -175,6 +250,11 @@ class SessionManager {
   dismissAuth(runId: string): void {
     const session = this.sessions.get(runId);
     if (!session) return;
+
+    if (session.authTimeoutTimer) {
+      clearTimeout(session.authTimeoutTimer);
+      session.authTimeoutTimer = null;
+    }
 
     session.authDismissed = true;
     session.authRequired = false;
@@ -264,7 +344,7 @@ class SessionManager {
       }
 
       // Save cookies and storageState
-      await this.trySaveStorageState(runId);
+      await this.saveStorageState(runId);
 
       // Unblock auth scenarios
       const unblocked = scenariosRepo.unblockAuthScenarios(runId);
@@ -331,8 +411,23 @@ class SessionManager {
     const session = this.sessions.get(runId);
     if (!session || !session.isPaused) return false;
 
-    // Check if session navigated away from a login page or holds auth credentials
-    this.trySaveStorageState(runId).catch(() => {});
+    // Only save storage state if page is currently authenticated
+    isLoggedIn(session.page)
+      .then((loggedIn) => {
+        if (loggedIn) {
+          this.saveStorageState(runId).catch(() => {});
+          const unblocked = scenariosRepo.unblockAuthScenarios(runId);
+          for (const s of unblocked) {
+            eventBus.emitRunEvent({
+              type: 'scenario:updated',
+              runId,
+              timestamp: new Date().toISOString(),
+              data: { scenario: s },
+            });
+          }
+        }
+      })
+      .catch(() => {});
 
     session.isPaused = false;
     const resolver = session.resumeResolver;
@@ -593,15 +688,18 @@ class SessionManager {
     return guidance;
   }
 
-  private async trySaveStorageState(runId: string): Promise<void> {
+  async saveStorageState(runId: string): Promise<boolean> {
     const session = this.sessions.get(runId);
-    if (!session) return;
+    if (!session) return false;
 
     try {
       const runDir = storage.getRunDir(runId);
       const authPath = `${runDir}/auth.json`;
       await session.context.storageState({ path: authPath });
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

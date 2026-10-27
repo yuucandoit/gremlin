@@ -265,7 +265,7 @@ Decide the best next action:`;
   }
 
   private heuristicDecision(obs: ObservationData): DecisionResult {
-    const { interactiveElements, personaId, stepNumber, maxSteps, recentActions } = obs;
+    const { interactiveElements, personaId, stepNumber, maxSteps, recentActions, scenarioGoal, userGuidance } = obs;
 
     if (stepNumber >= maxSteps || interactiveElements.length === 0) {
       return {
@@ -275,17 +275,185 @@ Decide the best next action:`;
     }
 
     const persona = personaId.toLowerCase();
+    const goal = (scenarioGoal || '').toLowerCase();
+    const guidance = (userGuidance || '').toLowerCase();
     const clickedSelectors = new Set(
       recentActions.filter((a) => a.type === 'click' || a.type === 'double_click').map((a) => a.selector)
     );
+    const typedSelectors = new Set(
+      recentActions.filter((a) => a.type === 'type').map((a) => a.selector)
+    );
 
+    // --- GOAL-DIRECTED HEURISTICS ---
+    // 1. Coupon / Promo targeted test
+    if (goal.includes('kupon') || goal.includes('coupon') || goal.includes('promo') || guidance.includes('kupon')) {
+      const couponInput = interactiveElements.find(
+        (el) =>
+          (el.tag === 'input' || el.tag === 'textarea') &&
+          (el.name?.toLowerCase().includes('coupon') ||
+            el.name?.toLowerCase().includes('kupon') ||
+            el.name?.toLowerCase().includes('code') ||
+            el.name?.toLowerCase().includes('promo') ||
+            el.placeholder?.toLowerCase().includes('kupon') ||
+            el.placeholder?.toLowerCase().includes('coupon') ||
+            el.selector.toLowerCase().includes('coupon') ||
+            el.selector.toLowerCase().includes('kupon'))
+      );
+
+      if (couponInput && !typedSelectors.has(couponInput.selector)) {
+        const val = persona.includes('skeptic') ? 'INVALID_PROMO' : 'WELCOME10';
+        return {
+          thought: `Targeting coupon scenario: filling '${val}' into ${couponInput.selector} to verify discount logic`,
+          action: {
+            type: 'type',
+            selector: couponInput.selector,
+            text: val,
+            clearFirst: true,
+            description: `Input kupon ${val}`,
+          },
+        };
+      }
+
+      const applyCouponBtn = interactiveElements.find(
+        (el) =>
+          (el.tag === 'button' || el.role === 'button') &&
+          (el.text.toLowerCase().includes('gunakan') ||
+            el.text.toLowerCase().includes('terapkan') ||
+            el.text.toLowerCase().includes('apply') ||
+            el.selector.toLowerCase().includes('coupon') ||
+            el.selector.toLowerCase().includes('kupon'))
+      );
+      if (applyCouponBtn && !clickedSelectors.has(applyCouponBtn.selector)) {
+        return {
+          thought: `Targeting coupon scenario: submitting coupon via ${applyCouponBtn.selector}`,
+          action: {
+            type: 'click',
+            selector: applyCouponBtn.selector,
+            description: `Click ${applyCouponBtn.text}`,
+          },
+        };
+      }
+    }
+
+    // 2. Checkout / Double Click / Race condition targeted test
+    if (
+      goal.includes('double') ||
+      goal.includes('race') ||
+      goal.includes('checkout') ||
+      goal.includes('ganda') ||
+      goal.includes('cepat')
+    ) {
+      const checkoutBtn = interactiveElements.find(
+        (el) =>
+          (el.tag === 'button' || el.role === 'button') &&
+          (el.text.toLowerCase().includes('checkout') ||
+            el.text.toLowerCase().includes('order') ||
+            el.text.toLowerCase().includes('bayar') ||
+            el.text.toLowerCase().includes('pesan') ||
+            el.selector.toLowerCase().includes('checkout'))
+      );
+
+      if (checkoutBtn) {
+        return {
+          thought: `Targeting race condition: rapidly double-clicking checkout button '${checkoutBtn.text}' (${checkoutBtn.selector})`,
+          action: {
+            type: 'double_click',
+            selector: checkoutBtn.selector,
+            description: `Double click ${checkoutBtn.selector}`,
+          },
+        };
+      }
+
+      // If checkout button not found, maybe we need to add to cart first
+      const addToCartBtn = interactiveElements.find(
+        (el) =>
+          (el.tag === 'button' || el.role === 'button') &&
+          (el.text.toLowerCase().includes('tambah') ||
+            el.text.toLowerCase().includes('cart') ||
+            el.text.toLowerCase().includes('keranjang') ||
+            el.selector.toLowerCase().includes('add-to-cart'))
+      );
+      if (addToCartBtn) {
+        return {
+          thought: `Preparing checkout scenario: adding product to cart via '${addToCartBtn.text}' (${addToCartBtn.selector})`,
+          action: {
+            type: 'click',
+            selector: addToCartBtn.selector,
+            description: `Click ${addToCartBtn.text}`,
+          },
+        };
+      }
+    }
+
+    // 3. Login test scenario
+    if (goal.includes('login') || goal.includes('masuk') || goal.includes('auth')) {
+      const emailInput = interactiveElements.find(
+        (el) =>
+          (el.tag === 'input' || el.tag === 'textarea') &&
+          (el.type === 'email' || el.name?.toLowerCase().includes('email') || el.name?.toLowerCase().includes('user')) &&
+          !typedSelectors.has(el.selector)
+      );
+      if (emailInput) {
+        const val = goal.includes('salah') || goal.includes('invalid') ? 'nonexistent@example.com' : 'demo@glitchmart.local';
+        return {
+          thought: `Targeting login scenario: entering email into ${emailInput.selector}`,
+          action: {
+            type: 'type',
+            selector: emailInput.selector,
+            text: val,
+            clearFirst: true,
+            description: `Enter email into ${emailInput.selector}`,
+          },
+        };
+      }
+
+      const passInput = interactiveElements.find(
+        (el) =>
+          el.tag === 'input' &&
+          el.type === 'password' &&
+          !typedSelectors.has(el.selector)
+      );
+      if (passInput) {
+        return {
+          thought: `Targeting login scenario: entering password into ${passInput.selector}`,
+          action: {
+            type: 'type',
+            selector: passInput.selector,
+            text: 'wrongpass123',
+            clearFirst: true,
+            description: `Enter password into ${passInput.selector}`,
+          },
+        };
+      }
+
+      const submitLogin = interactiveElements.find(
+        (el) =>
+          (el.tag === 'button' || el.type === 'submit') &&
+          (el.text.toLowerCase().includes('login') ||
+            el.text.toLowerCase().includes('masuk') ||
+            el.selector.toLowerCase().includes('login') ||
+            el.selector.toLowerCase().includes('submit'))
+      );
+      if (submitLogin) {
+        return {
+          thought: `Targeting login scenario: submitting login form via ${submitLogin.selector}`,
+          action: {
+            type: 'click',
+            selector: submitLogin.selector,
+            description: `Click ${submitLogin.text}`,
+          },
+        };
+      }
+    }
+
+    // --- DEFAULT PERSONA EXPLORATION ---
     // 1. Inputs
     const emptyInputs = interactiveElements.filter(
       (el) =>
         (el.tag === 'input' || el.tag === 'textarea') &&
         el.type !== 'submit' &&
         el.type !== 'button' &&
-        !clickedSelectors.has(el.selector)
+        !typedSelectors.has(el.selector)
     );
 
     if (emptyInputs.length > 0 && Math.random() < 0.8) {

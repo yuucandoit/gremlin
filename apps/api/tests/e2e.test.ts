@@ -21,13 +21,14 @@ describe('Gremlin End-to-End Autonomous Agent Test', () => {
     async () => {
       const runId = `e2e-${Date.now()}`;
 
-      // Create Run
+      // Create Run with autoApprove to run headless e2e without waiting on human approval
       const run = runsRepo.create({
         id: runId,
         url: 'http://localhost:3002',
         personaId: 'gremlin',
         maxSteps: 3,
         timeoutMs: 35000,
+        autoApprove: true,
       });
       expect(run.status).toBe('queued');
 

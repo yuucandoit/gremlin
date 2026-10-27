@@ -94,8 +94,14 @@ Your goal is to find accessibility hurdles:
 };
 
 export function getPersona(id?: string): Persona {
-  if (!id || !PERSONAS[id]) {
-    return PERSONAS.gremlin;
+  if (!id) return PERSONAS.gremlin;
+  const normalized = id.toLowerCase().replace(/-/g, '_');
+  if (PERSONAS[normalized]) {
+    return PERSONAS[normalized];
   }
-  return PERSONAS[id];
+  if (normalized.includes('speed')) return PERSONAS.speed_demon;
+  if (normalized.includes('skeptic')) return PERSONAS.skeptic;
+  if (normalized.includes('shop')) return PERSONAS.shopper;
+  if (normalized.includes('keyboard')) return PERSONAS.keyboard_navigator;
+  return PERSONAS.gremlin;
 }

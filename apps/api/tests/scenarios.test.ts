@@ -79,9 +79,9 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
     const runId = `test-parse-${Date.now()}`;
     runsRepo.create({ id: runId, url: 'http://localhost:3002', personaId: 'gremlin' });
 
-    // 1. Double click prompt -> speed-demon persona
+    // 1. Double click prompt -> speed_demon persona
     const s1 = await parseScenarioFromPrompt('coba checkout dengan klik cepat double submit', runId, 0);
-    expect(s1.personaId).toBe('speed-demon');
+    expect(s1.personaId).toBe('speed_demon');
     expect(s1.expect.length).toBeGreaterThan(0);
     expect(s1.source).toBe('user');
 

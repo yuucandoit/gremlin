@@ -156,6 +156,12 @@ export function ScenarioPlanManager({
             <Lock className="w-3.5 h-3.5" /> Terblokir (Butuh Auth)
           </span>
         );
+      case 'inconclusive':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/10 text-sky-300 border border-sky-500/20" title="Kriteria belum dapat dibuktikan sepenuhnya">
+            <HelpCircle className="w-3.5 h-3.5" /> Belum Terverifikasi
+          </span>
+        );
       case 'skipped':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
@@ -259,6 +265,13 @@ export function ScenarioPlanManager({
                 title={`${coverage.blocked} Terblokir`}
               />
             )}
+            {coverage.inconclusive !== undefined && coverage.inconclusive > 0 && (
+              <div
+                style={{ width: `${(coverage.inconclusive / coverage.total) * 100}%` }}
+                className="bg-sky-500 h-full transition-all duration-500"
+                title={`${coverage.inconclusive} Belum Terverifikasi`}
+              />
+            )}
           </div>
 
           {/* Counter pills */}
@@ -272,6 +285,11 @@ export function ScenarioPlanManager({
             {coverage.blocked > 0 && (
               <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 🔒 {coverage.blocked} Terblokir
+              </span>
+            )}
+            {coverage.inconclusive !== undefined && coverage.inconclusive > 0 && (
+              <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                ? {coverage.inconclusive} Belum Terverifikasi
               </span>
             )}
             <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
@@ -356,12 +374,16 @@ export function ScenarioPlanManager({
                         </span>
                       )}
 
-                      {/* Auth requirement */}
-                      {scenario.needsAuth && (
+                      {/* Auth requirement or Login testing */}
+                      {scenario.authMode === 'tests_login' ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 flex items-center gap-1">
+                          🧪 UJI LOGIN
+                        </span>
+                      ) : (scenario.authMode === 'requires' || scenario.needsAuth) ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
                           <Lock className="w-3 h-3" /> BUTUH LOGIN
                         </span>
-                      )}
+                      ) : null}
 
                       {/* Persona badge */}
                       <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border flex items-center gap-1 ${personaBadge.color}`}>
@@ -424,6 +446,8 @@ export function ScenarioPlanManager({
                           ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
                           : scenario.status === 'failed'
                           ? 'bg-rose-950/20 border-rose-500/30 text-rose-300'
+                          : scenario.status === 'inconclusive'
+                          ? 'bg-sky-950/20 border-sky-500/30 text-sky-300'
                           : 'bg-amber-950/20 border-amber-500/30 text-amber-300'
                       }`}
                     >
@@ -431,6 +455,44 @@ export function ScenarioPlanManager({
                         <span>📢 Hasil Verifikasi Skenario:</span>
                       </div>
                       <p>{scenario.verdict}</p>
+                    </div>
+                  )}
+
+                  {/* Structured Expect Criteria Checklist */}
+                  {scenario.checks && scenario.checks.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-gremlin-400" /> Kriteria Evaluasi Expect:
+                      </div>
+                      <div className="space-y-1.5 bg-slate-900/90 p-3 rounded-lg border border-slate-800">
+                        {scenario.checks.map((chk, cIdx) => (
+                          <div key={cIdx} className="flex items-start gap-2 text-xs">
+                            {chk.result === 'met' ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                            ) : chk.result === 'violated' ? (
+                              <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                            ) : (
+                              <HelpCircle className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <span
+                                className={
+                                  chk.result === 'met'
+                                    ? 'text-slate-200'
+                                    : chk.result === 'violated'
+                                    ? 'text-rose-300 font-medium'
+                                    : 'text-slate-400'
+                                }
+                              >
+                                {chk.criterion}
+                              </span>
+                              {chk.evidence && (
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{chk.evidence}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 

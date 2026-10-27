@@ -22,6 +22,8 @@ import { StuckDetector } from './detectors/stuck';
 import { Guardrails } from './guardrails';
 import { observePage } from './observe';
 import { getPersona } from './personas';
+import { evaluateScenarioVerdict } from './verdict';
+import { isLoggedIn, performLogin } from './auth';
 
 export async function runAgentLoop(runId: string): Promise<void> {
   const run = runsRepo.getById(runId);
@@ -125,6 +127,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
         console.warn('[AgentLoop] Reconnaissance failed:', reconErr);
       }
     } catch (err: any) {
+      console.warn('[AgentLoop] Initial navigation failed:', err?.message || err);
       const navSignal = signalsRepo.create({
         id: crypto.randomUUID(),
         runId,
@@ -155,6 +158,14 @@ export async function runAgentLoop(runId: string): Promise<void> {
       await sessionManager.waitForApproval(runId);
     }
 
+    if (sessionManager.isCancelled(runId)) {
+      console.log(`[AgentLoop] Run ${runId} was cancelled before execution.`);
+      return;
+    }
+
+    // Reset execution start time AFTER user approves plan
+    const executionStartTime = Date.now();
+
     runsRepo.updateStatus(runId, 'running');
     eventBus.emitRunEvent({
       type: 'run:resumed',
@@ -163,38 +174,96 @@ export async function runAgentLoop(runId: string): Promise<void> {
       data: { runId },
     });
 
+    // Upfront login if credentials were provided
+    const upfrontCreds = sessionManager.getCredentials(runId);
+    if (upfrontCreds) {
+      console.log(`[AgentLoop] 🔐 Performing upfront authentication for ${upfrontCreds.username}...`);
+      const loginRes = await performLogin(page, upfrontCreds);
+      if (loginRes.success) {
+        await sessionManager.saveStorageState(runId);
+        console.log(`[AgentLoop] ✅ Upfront authentication successful.`);
+      } else {
+        console.warn(`[AgentLoop] ⚠️ Upfront authentication failed: ${loginRes.message}`);
+      }
+    }
+
     // 4. Scenario-Driven Execution Loop
     let globalStepNumber = 0;
 
-    // Fetch the enabled scenarios (which the user may have edited, added to, or reordered)
-    const activeScenarios = scenariosRepo.listByRunId(runId).filter((s) => s.enabled);
-    console.log(`[AgentLoop] 🚀 Beginning execution of ${activeScenarios.length} enabled test scenarios.`);
+    while (true) {
+      if (sessionManager.isCancelled(runId)) {
+        console.log(`[AgentLoop] Run ${runId} cancelled by user.`);
+        break;
+      }
 
-    for (let sIdx = 0; sIdx < activeScenarios.length; sIdx++) {
-      const scenario = activeScenarios[sIdx];
+      // Check global limits
+      if (globalStepNumber >= maxTotalSteps || Date.now() - executionStartTime > timeoutMs) {
+        console.log(`[AgentLoop] Global limits reached: step ${globalStepNumber}/${maxTotalSteps}, time ${Date.now() - executionStartTime}/${timeoutMs}ms.`);
+        const remaining = scenariosRepo.listByRunId(runId).filter((s) => s.enabled && s.status === 'pending');
+        for (const rem of remaining) {
+          scenariosRepo.updateStatus(rem.id, 'skipped', 'Dilewati: Batas total langkah atau waktu run tercapai');
+        }
+        break;
+      }
 
-      // Check if global limits reached
-      if (globalStepNumber >= maxTotalSteps || Date.now() - startTime > timeoutMs) {
-        scenariosRepo.updateStatus(scenario.id, 'skipped', 'Dilewati: Batas total langkah atau waktu run tercapai');
-        continue;
+      // Pick next pending scenario dynamically
+      const pendingScenarios = scenariosRepo.listByRunId(runId).filter((s) => s.enabled && s.status === 'pending');
+      if (pendingScenarios.length === 0) {
+        break;
+      }
+
+      const scenario = pendingScenarios[0];
+      const allScenarios = scenariosRepo.listByRunId(runId).filter((s) => s.enabled);
+      const scenarioIndex = allScenarios.findIndex((s) => s.id === scenario.id) + 1;
+
+      // Reset page before each scenario starts to avoid state pollution from prior tests
+      try {
+        await page.goto(run.url, { waitUntil: 'domcontentloaded', timeout: 12000 });
+        recentUrls.push(page.url());
+        await injectVirtualCursor(page);
+      } catch (resetErr) {
+        console.warn(`[AgentLoop] Navigation reset to ${run.url} error:`, resetErr);
       }
 
       // Check Authentication Requirement
-      const hasAuth = await sessionManager.hasAuth(runId);
-      if (scenario.needsAuth && !hasAuth) {
-        console.log(`[AgentLoop] 🔒 Scenario '${scenario.title}' blocked: Requires authentication.`);
-        scenariosRepo.updateStatus(
-          scenario.id,
-          'blocked',
-          'Memerlukan otentikasi. Skenario ditunda sampai pengguna login melalui Gremlin Playground.'
-        );
-        eventBus.emitRunEvent({
-          type: 'scenario:updated',
-          runId,
-          timestamp: new Date().toISOString(),
-          data: { scenario: scenariosRepo.getById(scenario.id) },
-        });
-        continue;
+      const scenarioNeedsAuth = scenario.authMode === 'requires' || scenario.needsAuth;
+      const scenarioIsNegativeLogin = scenario.authMode === 'tests_login';
+
+      if (scenarioNeedsAuth && !scenarioIsNegativeLogin) {
+        let authenticated = await isLoggedIn(page);
+        if (!authenticated && upfrontCreds) {
+          const loginRes = await performLogin(page, upfrontCreds);
+          if (loginRes.success) {
+            authenticated = true;
+            await sessionManager.saveStorageState(runId);
+          }
+        }
+
+        if (!authenticated) {
+          console.log(`[AgentLoop] 🔒 Scenario '${scenario.title}' requires auth. Prompting user...`);
+          sessionManager.triggerAuthRequired(runId, {
+            url: page.url(),
+            message: `Skenario '${scenario.title}' membutuhkan login akun. Masukkan kredensial atau login langsung di Gremlin Playground.`,
+          });
+          await sessionManager.waitForAuthIfNeeded(runId);
+          authenticated = await isLoggedIn(page);
+        }
+
+        if (!authenticated) {
+          console.log(`[AgentLoop] 🔒 Scenario '${scenario.title}' remains unauthenticated. Marking as blocked.`);
+          scenariosRepo.updateStatus(
+            scenario.id,
+            'blocked',
+            'Skenario terblokir: Memerlukan login akun pengguna. Masukkan akun untuk membuka skenario ini.'
+          );
+          eventBus.emitRunEvent({
+            type: 'scenario:updated',
+            runId,
+            timestamp: new Date().toISOString(),
+            data: { scenario: scenariosRepo.getById(scenario.id) },
+          });
+          continue;
+        }
       }
 
       // Activate scenario
@@ -216,11 +285,12 @@ export async function runAgentLoop(runId: string): Promise<void> {
           currentStep: globalStepNumber,
           maxSteps: maxTotalSteps,
           status: 'running',
-          message: `[Skenario ${sIdx + 1}/${activeScenarios.length}] ${scenario.title}`,
+          message: `[Skenario ${scenarioIndex}/${allScenarios.length}] ${scenario.title}`,
         },
       });
 
       const scenarioSignals: Signal[] = [];
+      const scenarioSteps: Step[] = [];
       const scenarioMaxSteps = Math.min(scenario.maxSteps || 8, maxTotalSteps - globalStepNumber);
 
       // Execute scenario-focused steps
@@ -230,11 +300,15 @@ export async function runAgentLoop(runId: string): Promise<void> {
         // Gremlin Playground: Halt exploration if user paused to take over
         await sessionManager.waitIfPaused(runId);
 
+        if (sessionManager.isCancelled(runId)) {
+          break;
+        }
+
         // Guardrail evaluation
         const guardrail = Guardrails.evaluate({
           currentStep: globalStepNumber,
           maxSteps: maxTotalSteps,
-          startTime,
+          startTime: executionStartTime,
           timeoutMs,
           recentActions,
           recentUrls,
@@ -255,7 +329,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
         recentUrls.push(obs.url);
         streamManager.setCurrentUrl(runId, obs.url);
 
-        // Check for Login Form Detection
+        // Check for Login Form Detection (only when not specifically testing login page negatively)
         const hasPasswordField = obs.interactiveElements.some(
           (el) => el.type === 'password' || el.selector.toLowerCase().includes('password')
         );
@@ -264,7 +338,12 @@ export async function runAgentLoop(runId: string): Promise<void> {
           obs.url.toLowerCase().includes('/signin') ||
           obs.url.toLowerCase().includes('/auth');
 
-        if ((hasPasswordField || isAuthRoute) && !(await sessionManager.hasAuth(runId))) {
+        if (
+          !scenarioIsNegativeLogin &&
+          !scenario.goal.toLowerCase().includes('login') &&
+          (hasPasswordField || isAuthRoute) &&
+          !(await isLoggedIn(page))
+        ) {
           const passEl = obs.interactiveElements.find((el) => el.type === 'password');
           const userEl = obs.interactiveElements.find(
             (el) =>
@@ -280,8 +359,8 @@ export async function runAgentLoop(runId: string): Promise<void> {
             message: `Form login terdeteksi pada ${obs.url}. Masukkan kredensial akun untuk melanjutkan pengujian.`,
           });
 
-          // If scenario requires auth or if user review mode is active, wait for credentials or dismissal
-          if (scenario.needsAuth) {
+          // If scenario requires auth, wait for credentials or dismissal
+          if (scenarioNeedsAuth) {
             await sessionManager.waitForAuthIfNeeded(runId);
           }
         }
@@ -379,6 +458,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
             durationMs: 0,
           });
           collectedSteps.push(finishStep);
+          scenarioSteps.push(finishStep);
 
           eventBus.emitRunEvent({
             type: 'step:acted',
@@ -469,6 +549,7 @@ export async function runAgentLoop(runId: string): Promise<void> {
         });
         step.signals = postSignals;
         collectedSteps.push(step);
+        scenarioSteps.push(step);
 
         runsRepo.updateProgress(runId, globalStepNumber, collectedSignals.length);
 
@@ -494,24 +575,11 @@ export async function runAgentLoop(runId: string): Promise<void> {
         await page.waitForTimeout(300);
       }
 
-      // Evaluate Scenario Verdict (passed vs failed based on signals & expect criteria)
-      const criticalErrors = scenarioSignals.filter(
-        (s) =>
-          s.type === 'http_5xx' ||
-          s.type === 'unhandled_rejection' ||
-          (s.type === 'console_error' && !s.message.includes('Download the React DevTools'))
-      );
+      // Evaluate Scenario Verdict (passed, failed, or inconclusive based on signals & expect criteria)
+      const lastStepScreenshot = storage.getStepScreenshotPath(runId, globalStepNumber);
+      const evalResult = await evaluateScenarioVerdict(scenario, scenarioSignals, scenarioSteps, lastStepScreenshot);
 
-      let finalStatus: 'passed' | 'failed' = 'passed';
-      let verdictMessage = `Lulus: Semua kriteria expect terpenuhi tanpa anomali [${scenario.expect.slice(0, 2).join('; ')}]`;
-
-      if (criticalErrors.length > 0) {
-        finalStatus = 'failed';
-        const err = criticalErrors[0];
-        verdictMessage = `Gagal: Terdeteksi ${err.type.replace('_', ' ')} (${err.message.slice(0, 90)})`;
-      }
-
-      scenariosRepo.updateStatus(scenario.id, finalStatus, verdictMessage);
+      scenariosRepo.updateStatus(scenario.id, evalResult.status, evalResult.verdict, evalResult.checks);
       sessionManager.setCurrentScenarioId(runId, null);
 
       eventBus.emitRunEvent({
@@ -540,8 +608,12 @@ export async function runAgentLoop(runId: string): Promise<void> {
     const tracePath = storage.getTracePath(runId);
     await context.tracing.stop({ path: tracePath }).catch(() => {});
 
-    // Mark run as completed
-    runsRepo.updateStatus(runId, 'completed');
+    // Mark run as completed or cancelled
+    if (sessionManager.isCancelled(runId)) {
+      runsRepo.updateStatus(runId, 'cancelled');
+    } else {
+      runsRepo.updateStatus(runId, 'completed');
+    }
     const updatedRun = runsRepo.getById(runId)!;
 
     eventBus.emitRunEvent({
