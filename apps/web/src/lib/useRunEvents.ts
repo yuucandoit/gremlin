@@ -16,6 +16,13 @@ export interface UseRunEventsState {
     message?: string;
   };
   isLive: boolean;
+  authPrompt?: {
+    url: string;
+    message?: string;
+    emailSelector?: string;
+    passwordSelector?: string;
+    submitSelector?: string;
+  } | null;
   error?: string | null;
 }
 
@@ -27,6 +34,7 @@ export function useRunEvents(runId: string, initialRun?: Run | null, initialScen
     signals: [],
     findings: [],
     isLive: false,
+    authPrompt: null,
     error: null,
   });
 
@@ -130,6 +138,22 @@ export function useRunEvents(runId: string, initialRun?: Run | null, initialScen
               break;
             }
 
+            case 'auth:required': {
+              setState((prev) => ({
+                ...prev,
+                authPrompt: runEvent.data,
+              }));
+              break;
+            }
+
+            case 'auth:resolved': {
+              setState((prev) => ({
+                ...prev,
+                authPrompt: null,
+              }));
+              break;
+            }
+
             case 'run:progress': {
               setState((prev) => ({
                 ...prev,
@@ -218,6 +242,8 @@ export function useRunEvents(runId: string, initialRun?: Run | null, initialScen
       eventSource.addEventListener('scenario:deleted', handleEvent as EventListener);
       eventSource.addEventListener('run:paused', handleEvent as EventListener);
       eventSource.addEventListener('run:resumed', handleEvent as EventListener);
+      eventSource.addEventListener('auth:required', handleEvent as EventListener);
+      eventSource.addEventListener('auth:resolved', handleEvent as EventListener);
       eventSource.addEventListener('run:progress', handleEvent as EventListener);
       eventSource.addEventListener('step:acted', handleEvent as EventListener);
       eventSource.addEventListener('signal:detected', handleEvent as EventListener);

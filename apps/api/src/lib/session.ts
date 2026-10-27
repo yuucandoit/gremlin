@@ -2,6 +2,7 @@ import type { InspectElementResult, InteractiveInputRequest, Step } from '@greml
 import type { BrowserContext, Page } from 'playwright';
 import { existsSync } from 'node:fs';
 import { runsRepo } from '../db/repo/runs';
+import { scenariosRepo } from '../db/repo/scenarios';
 import { stepsRepo } from '../db/repo/steps';
 import { eventBus } from './events';
 import { storage } from './storage';
@@ -16,6 +17,17 @@ export interface ActiveSession {
   approved: boolean;
   approvalPromise: Promise<void> | null;
   approvalResolver: (() => void) | null;
+  authRequired: boolean;
+  authDismissed: boolean;
+  authPromise: Promise<void> | null;
+  authResolver: (() => void) | null;
+  authInfo?: {
+    url: string;
+    emailSelector?: string;
+    passwordSelector?: string;
+    submitSelector?: string;
+    message?: string;
+  } | null;
   currentScenarioId?: string | null;
   userInstruction?: string | null;
   targetSelector?: string | null;
@@ -35,6 +47,11 @@ class SessionManager {
       approved: autoApprove,
       approvalPromise: null,
       approvalResolver: null,
+      authRequired: false,
+      authDismissed: false,
+      authPromise: null,
+      authResolver: null,
+      authInfo: null,
       currentScenarioId: null,
       userInstruction: null,
       targetSelector: null,
@@ -48,6 +65,9 @@ class SessionManager {
     }
     if (session?.approvalResolver) {
       session.approvalResolver();
+    }
+    if (session?.authResolver) {
+      session.authResolver();
     }
     this.sessions.delete(runId);
   }
@@ -113,6 +133,177 @@ class SessionManager {
       return existsSync(authPath);
     } catch {
       return false;
+    }
+  }
+
+  triggerAuthRequired(
+    runId: string,
+    info: {
+      url: string;
+      emailSelector?: string;
+      passwordSelector?: string;
+      submitSelector?: string;
+      message?: string;
+    }
+  ): void {
+    const session = this.sessions.get(runId);
+    if (!session || session.authDismissed) return;
+
+    session.authRequired = true;
+    session.authInfo = info;
+
+    if (!session.authPromise) {
+      session.authPromise = new Promise<void>((resolve) => {
+        session.authResolver = resolve;
+      });
+    }
+
+    eventBus.emitRunEvent({
+      type: 'auth:required',
+      runId,
+      timestamp: new Date().toISOString(),
+      data: {
+        url: info.url,
+        message: info.message || 'Form login terdeteksi pada halaman aktif',
+        emailSelector: info.emailSelector,
+        passwordSelector: info.passwordSelector,
+        submitSelector: info.submitSelector,
+      },
+    });
+  }
+
+  dismissAuth(runId: string): void {
+    const session = this.sessions.get(runId);
+    if (!session) return;
+
+    session.authDismissed = true;
+    session.authRequired = false;
+    session.authInfo = null;
+
+    if (session.authResolver) {
+      session.authResolver();
+      session.authResolver = null;
+      session.authPromise = null;
+    }
+  }
+
+  async waitForAuthIfNeeded(runId: string): Promise<void> {
+    const session = this.sessions.get(runId);
+    if (session && session.authRequired && !session.authDismissed && session.authPromise) {
+      await session.authPromise;
+    }
+  }
+
+  async submitAuthCredentials(
+    runId: string,
+    emailOrUsername: string,
+    password: string,
+    submitSelector?: string
+  ): Promise<{ success: boolean; message: string; redirectedUrl?: string }> {
+    const session = this.sessions.get(runId);
+    if (!session) {
+      throw new Error(`Active browser session for run ${runId} not found`);
+    }
+
+    const { page } = session;
+
+    try {
+      const emailSelector =
+        'input[type="email"], input[name="email"], input[id*="email"], input[name*="user"], input[id*="user"], input[type="text"]';
+      const passwordSelector = 'input[type="password"], input[name="password"], input[id*="password"]';
+      const btnSelector =
+        submitSelector ||
+        'button[type="submit"], input[type="submit"], #btn-login-submit, button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Masuk")';
+
+      const emailEl = await page.$(emailSelector);
+      if (!emailEl) {
+        return { success: false, message: 'Form login tidak ditemukan pada halaman ini' };
+      }
+
+      await emailEl.fill(emailOrUsername);
+
+      const passEl = await page.$(passwordSelector);
+      if (passEl) {
+        await passEl.fill(password);
+      }
+
+      const currentSteps = stepsRepo.listByRunId(runId);
+      stepsRepo.create({
+        id: crypto.randomUUID(),
+        runId,
+        scenarioId: session.currentScenarioId || null,
+        stepNumber: currentSteps.length + 1,
+        actor: 'human',
+        action: { type: 'type', selector: emailSelector, text: emailOrUsername },
+        thought: `[Human Co-Pilot Auth] Mengisi kredensial login akun untuk '${emailOrUsername}'`,
+        durationMs: 150,
+      });
+
+      const submitBtn = await page.$(btnSelector);
+      if (submitBtn) {
+        await submitBtn.click().catch(() => {});
+      } else {
+        await page.keyboard.press('Enter').catch(() => {});
+      }
+
+      await page.waitForTimeout(1000);
+
+      // Check if error alert was produced
+      const errorText = await page
+        .evaluate(() => {
+          const alert = document.querySelector('.alert-danger, [role="alert"], .error-message, #login-alert');
+          if (alert && alert.clientHeight > 0) {
+            return alert.textContent?.trim() || null;
+          }
+          return null;
+        })
+        .catch(() => null);
+
+      if (errorText && (errorText.toLowerCase().includes('failed') || errorText.toLowerCase().includes('invalid') || errorText.toLowerCase().includes('no account'))) {
+        return { success: false, message: errorText };
+      }
+
+      // Save cookies and storageState
+      await this.trySaveStorageState(runId);
+
+      // Unblock auth scenarios
+      const unblocked = scenariosRepo.unblockAuthScenarios(runId);
+      for (const s of unblocked) {
+        eventBus.emitRunEvent({
+          type: 'scenario:updated',
+          runId,
+          timestamp: new Date().toISOString(),
+          data: { scenario: s },
+        });
+      }
+
+      // Resolve auth promise
+      session.authRequired = false;
+      session.authDismissed = false;
+      if (session.authResolver) {
+        session.authResolver();
+        session.authResolver = null;
+        session.authPromise = null;
+      }
+
+      eventBus.emitRunEvent({
+        type: 'auth:resolved',
+        runId,
+        timestamp: new Date().toISOString(),
+        data: {
+          success: true,
+          email: emailOrUsername,
+          message: 'Berhasil login dan menyimpan sesi otentikasi.',
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Berhasil login! Sesi tersimpan dan skenario terblokir telah dibuka kembali.',
+        redirectedUrl: page.url(),
+      };
+    } catch (err: any) {
+      return { success: false, message: `Gagal mengirim form login: ${err?.message || err}` };
     }
   }
 

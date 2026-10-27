@@ -39,6 +39,7 @@ interface LiveBrowserViewProps {
   onPause?: () => void;
   onResume?: () => void;
   onManualAction?: () => void;
+  onRequestLogin?: () => void;
   currentThought?: string;
   latestScreenshotPath?: string | null;
   currentStep?: number;
@@ -55,6 +56,7 @@ export function LiveBrowserView({
   onPause,
   onResume,
   onManualAction,
+  onRequestLogin,
   currentThought,
   latestScreenshotPath,
   currentStep = 0,
@@ -235,6 +237,17 @@ export function LiveBrowserView({
             >
               <Play className="w-3.5 h-3.5 fill-emerald-300" />
               <span>Resume Gremlin</span>
+            </button>
+          )}
+
+          {isPaused && onRequestLogin && (
+            <button
+              onClick={onRequestLogin}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Buka form input login"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Login Akun</span>
             </button>
           )}
 

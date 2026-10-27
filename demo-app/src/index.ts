@@ -544,9 +544,14 @@ const LOGIN_HTML = `<!DOCTYPE html>
         const data = await res.json();
 
         if (res.ok) {
+          localStorage.setItem('auth_token', data.token || 'glitch-token');
+          localStorage.setItem('user_email', email);
+          document.cookie = 'auth_token=' + (data.token || 'glitch-token') + '; path=/; max-age=86400';
+          document.cookie = 'user_email=' + email + '; path=/; max-age=86400';
           alertBox.className = 'alert alert-success';
           alertBox.style.display = 'block';
-          alertBox.innerText = data.message || 'Login successful!';
+          alertBox.innerText = data.message || 'Login successful! Redirecting to storefront...';
+          setTimeout(() => { window.location.href = '/'; }, 800);
         } else {
           // Reveals error containing account existence leak!
           alertBox.className = 'alert alert-danger';

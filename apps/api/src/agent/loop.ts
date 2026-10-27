@@ -255,6 +255,37 @@ export async function runAgentLoop(runId: string): Promise<void> {
         recentUrls.push(obs.url);
         streamManager.setCurrentUrl(runId, obs.url);
 
+        // Check for Login Form Detection
+        const hasPasswordField = obs.interactiveElements.some(
+          (el) => el.type === 'password' || el.selector.toLowerCase().includes('password')
+        );
+        const isAuthRoute =
+          obs.url.toLowerCase().includes('/login') ||
+          obs.url.toLowerCase().includes('/signin') ||
+          obs.url.toLowerCase().includes('/auth');
+
+        if ((hasPasswordField || isAuthRoute) && !(await sessionManager.hasAuth(runId))) {
+          const passEl = obs.interactiveElements.find((el) => el.type === 'password');
+          const userEl = obs.interactiveElements.find(
+            (el) =>
+              el.type === 'email' ||
+              el.selector.includes('email') ||
+              el.selector.includes('user') ||
+              (el.tag === 'input' && el.type !== 'password')
+          );
+          sessionManager.triggerAuthRequired(runId, {
+            url: obs.url,
+            emailSelector: userEl?.selector,
+            passwordSelector: passEl?.selector,
+            message: `Form login terdeteksi pada ${obs.url}. Masukkan kredensial akun untuk melanjutkan pengujian.`,
+          });
+
+          // If scenario requires auth or if user review mode is active, wait for credentials or dismissal
+          if (scenario.needsAuth) {
+            await sessionManager.waitForAuthIfNeeded(runId);
+          }
+        }
+
         // Dynamic Route Discovery: If a new unexpected route was reached, propose new scenario
         try {
           const currentPath = new URL(obs.url).pathname;

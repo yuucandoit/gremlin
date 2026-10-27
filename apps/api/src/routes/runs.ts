@@ -156,6 +156,58 @@ export const runsRoutes = new Elysia({ prefix: '/runs' })
     return { success: true, message: 'Test plan approved. Executing scenarios.' };
   })
 
+  // Auto-fill and submit login credentials
+  .post(
+    '/:id/auth-login',
+    async ({ params: { id }, body, set }) => {
+      const { emailOrUsername, password, submitSelector } = body as {
+        emailOrUsername: string;
+        password: string;
+        submitSelector?: string;
+      };
+
+      if (!emailOrUsername || !password) {
+        set.status = 400;
+        return { error: 'Email/Username dan Password diperlukan' };
+      }
+
+      try {
+        const result = await sessionManager.submitAuthCredentials(id, emailOrUsername, password, submitSelector);
+        if (!result.success) {
+          set.status = 401;
+        }
+        return result;
+      } catch (err: any) {
+        set.status = 500;
+        return { error: err?.message || String(err) };
+      }
+    },
+    {
+      body: t.Object({
+        emailOrUsername: t.String(),
+        password: t.String(),
+        submitSelector: t.Optional(t.String()),
+      }),
+    }
+  )
+
+  // Dismiss auth prompt to continue testing unauthenticated
+  .post('/:id/auth-dismiss', ({ params: { id } }) => {
+    sessionManager.dismissAuth(id);
+    return { success: true, message: 'Auth prompt dismissed' };
+  })
+
+  // Check auth status
+  .get('/:id/auth-status', async ({ params: { id } }) => {
+    const hasAuth = await sessionManager.hasAuth(id);
+    const session = sessionManager.getSession(id);
+    return {
+      hasAuth,
+      authRequired: session?.authRequired ?? false,
+      authInfo: session?.authInfo ?? null,
+    };
+  })
+
   // List scenarios and coverage
   .get('/:id/scenarios', ({ params: { id }, set }) => {
     const run = runsRepo.getById(id);

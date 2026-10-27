@@ -207,6 +207,16 @@ export const scenariosRepo = {
     return scenariosRepo.listByRunId(runId);
   },
 
+  unblockAuthScenarios(runId: string): Scenario[] {
+    db.prepare(`
+      UPDATE scenarios
+      SET status = 'pending', verdict = null
+      WHERE run_id = ? AND needs_auth = 1 AND status = 'blocked'
+    `).run(runId);
+
+    return scenariosRepo.listByRunId(runId).filter((s) => s.needsAuth);
+  },
+
   getCoverage(runId: string): ScenarioCoverage {
     const scenarios = scenariosRepo.listByRunId(runId);
     const total = scenarios.length;
@@ -232,3 +242,4 @@ export const scenariosRepo = {
     };
   },
 };
+

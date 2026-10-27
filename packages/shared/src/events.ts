@@ -5,6 +5,8 @@ export type RunEventType =
   | 'run:planning'
   | 'run:paused'
   | 'run:resumed'
+  | 'auth:required'
+  | 'auth:resolved'
   | 'test_plan:ready'
   | 'scenario:created'
   | 'scenario:updated'
@@ -32,6 +34,26 @@ export type RunPlanningEvent = BaseRunEvent<'run:planning', { runId: string; mes
 export type RunPausedEvent = BaseRunEvent<'run:paused', { runId: string }>;
 
 export type RunResumedEvent = BaseRunEvent<'run:resumed', { runId: string }>;
+
+export type AuthRequiredEvent = BaseRunEvent<
+  'auth:required',
+  {
+    url: string;
+    message?: string;
+    emailSelector?: string;
+    passwordSelector?: string;
+    submitSelector?: string;
+  }
+>;
+
+export type AuthResolvedEvent = BaseRunEvent<
+  'auth:resolved',
+  {
+    success: boolean;
+    email?: string;
+    message?: string;
+  }
+>;
 
 export type TestPlanReadyEvent = BaseRunEvent<'test_plan:ready', { testPlan: TestPlan; scenarios?: Scenario[] }>;
 
@@ -84,6 +106,8 @@ export type RunEvent =
   | RunPlanningEvent
   | RunPausedEvent
   | RunResumedEvent
+  | AuthRequiredEvent
+  | AuthResolvedEvent
   | TestPlanReadyEvent
   | ScenarioCreatedEvent
   | ScenarioUpdatedEvent

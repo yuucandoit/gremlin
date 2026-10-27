@@ -30,6 +30,7 @@ import { LiveBrowserView } from '../../../components/LiveBrowserView';
 import { StepTimeline } from '../../../components/StepTimeline';
 import { FindingCard } from '../../../components/FindingCard';
 import { ScenarioPlanManager } from '../../../components/ScenarioPlanManager';
+import { AuthPromptModal } from '../../../components/AuthPromptModal';
 
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [specCode, setSpecCode] = useState<string>('');
   const [copiedSpec, setCopiedSpec] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Subscribe to live SSE events
   const liveState = useRunEvents(runId, initialData?.run);
@@ -135,6 +137,23 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
 
   return (
     <div className="space-y-6">
+      {/* Auth Prompt Modal (Auto-detected or Manual Trigger) */}
+      {(liveState.authPrompt || showAuthModal) && (
+        <AuthPromptModal
+          runId={runId}
+          url={liveState.authPrompt?.url || currentRun?.url}
+          message={liveState.authPrompt?.message}
+          onSuccess={() => {
+            setShowAuthModal(false);
+            fetchFullReport();
+          }}
+          onClose={() => {
+            setShowAuthModal(false);
+            fetchFullReport();
+          }}
+        />
+      )}
+
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between pb-2 border-b border-border/80">
         <div className="flex items-center gap-3">
@@ -198,6 +217,16 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
             </>
           )}
 
+          {/* Quick Login Form Auto-fill Trigger */}
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:border-amber-400 hover:text-amber-300 text-amber-400 transition font-medium flex items-center gap-1.5 cursor-pointer"
+            title="Buka bantuan isi form login akun"
+          >
+            <span>🔐</span>
+            <span>Isi Login</span>
+          </button>
+
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -227,6 +256,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
               onPause={handlePause}
               onResume={handleResume}
               onManualAction={fetchFullReport}
+              onRequestLogin={() => setShowAuthModal(true)}
               currentThought={currentThought}
               latestScreenshotPath={latestScreenshotPath}
               currentStep={steps.length}

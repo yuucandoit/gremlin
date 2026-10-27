@@ -161,3 +161,31 @@ export async function reorderScenarios(runId: string, scenarioIds: string[]): Pr
   const data = await res.json();
   return data.scenarios;
 }
+
+export async function submitAuthLogin(
+  runId: string,
+  payload: { emailOrUsername: string; password: string; submitSelector?: string }
+): Promise<{ success: boolean; message: string; redirectedUrl?: string }> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/auth-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({ error: 'Gagal mengirim form login' }));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || 'Login gagal');
+  }
+  return data;
+}
+
+export async function dismissAuthPrompt(runId: string): Promise<void> {
+  await fetch(`${API_BASE}/runs/${runId}/auth-dismiss`, { method: 'POST' });
+}
+
+export async function getAuthStatus(
+  runId: string
+): Promise<{ hasAuth: boolean; authRequired: boolean; authInfo: any }> {
+  const res = await fetch(`${API_BASE}/runs/${runId}/auth-status`, { cache: 'no-store' });
+  if (!res.ok) return { hasAuth: false, authRequired: false, authInfo: null };
+  return res.json();
+}

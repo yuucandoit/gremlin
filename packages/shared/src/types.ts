@@ -218,3 +218,17 @@ export interface ManualGuidanceRequest {
   instruction: string;
   targetSelector?: string;
 }
+
+export interface SubmitAuthCredentialsRequest {
+  emailOrUsername: string;
+  password: string;
+  submitSelector?: string;
+}
+
+export interface AuthPromptInfo {
+  url: string;
+  message?: string;
+  emailSelector?: string;
+  passwordSelector?: string;
+  submitSelector?: string;
+}

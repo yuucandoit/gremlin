@@ -16,8 +16,9 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
       autoApprove: false,
     });
 
+    const sId = crypto.randomUUID();
     const scenario = scenariosRepo.create({
-      id: 'sc-1',
+      id: sId,
       runId,
       idx: 0,
       title: 'Checkout dengan klik ganda',
@@ -35,12 +36,12 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
       createdAt: new Date().toISOString(),
     });
 
-    expect(scenario.id).toBe('sc-1');
+    expect(scenario.id).toBe(sId);
     expect(scenario.expect.length).toBe(2);
     expect(scenario.enabled).toBe(true);
     expect(scenario.status).toBe('pending');
 
-    const fetched = scenariosRepo.getById('sc-1');
+    const fetched = scenariosRepo.getById(sId);
     expect(fetched).not.toBeNull();
     expect(fetched?.title).toBe('Checkout dengan klik ganda');
     expect(fetched?.expect).toContain('hanya satu order terbuat');
@@ -50,8 +51,9 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
     const runId = `test-risk-${Date.now()}`;
     runsRepo.create({ id: runId, url: 'http://localhost:3002', personaId: 'gremlin' });
 
+    const sHighId = crypto.randomUUID();
     const highRiskScenario = scenariosRepo.create({
-      id: 'sc-high',
+      id: sHighId,
       runId,
       idx: 1,
       title: 'Reset database dan hapus akun pengguna',
@@ -98,8 +100,9 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
     const runId = `test-bind-${Date.now()}`;
     runsRepo.create({ id: runId, url: 'http://localhost:3002', personaId: 'gremlin' });
 
+    const sBindId = crypto.randomUUID();
     const scenario = scenariosRepo.create({
-      id: 'sc-bind',
+      id: sBindId,
       runId,
       idx: 0,
       title: 'Uji Keranjang Kosong',
@@ -125,7 +128,7 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
       thought: 'Clicking empty cart',
       durationMs: 80,
     });
-    expect(step.scenarioId).toBe('sc-bind');
+    expect(step.scenarioId).toBe(sBindId);
 
     // Finding with scenarioId
     const finding = findingsRepo.create({
@@ -140,7 +143,7 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
       suggestedFix: 'Disable checkout button when count === 0',
       firstDetectedStep: 1,
     });
-    expect(finding.scenarioId).toBe('sc-bind');
+    expect(finding.scenarioId).toBe(sBindId);
   });
 
   it('should calculate coverage statistics accurately', () => {
@@ -149,7 +152,7 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
 
     // Scenario 1: Passed
     scenariosRepo.create({
-      id: 'sc-p1',
+      id: crypto.randomUUID(),
       runId,
       idx: 0,
       title: 'Scenario 1',
@@ -167,7 +170,7 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
 
     // Scenario 2: Failed
     scenariosRepo.create({
-      id: 'sc-p2',
+      id: crypto.randomUUID(),
       runId,
       idx: 1,
       title: 'Scenario 2',
@@ -185,7 +188,7 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
 
     // Scenario 3: Blocked (auth required)
     scenariosRepo.create({
-      id: 'sc-p3',
+      id: crypto.randomUUID(),
       runId,
       idx: 2,
       title: 'Scenario 3',
@@ -203,7 +206,7 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
 
     // Scenario 4: Disabled
     scenariosRepo.create({
-      id: 'sc-p4',
+      id: crypto.randomUUID(),
       runId,
       idx: 3,
       title: 'Scenario 4',
@@ -252,3 +255,4 @@ describe('Plan-Driven Execution & Scenario Backbone', () => {
     sessionManager.unregister(runId);
   });
 });
+
